@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vessel-writer</title>
+<link rel="stylesheet" href="static/style.css">
+<link rel="stylesheet" href="static/panel.css?v=aud1">
+<link rel="stylesheet" href="static/rail.css">
+<link rel="stylesheet" href="static/comments.css?v=aud1">
+<link rel="stylesheet" href="static/layout.css?v=aud1">
+<link rel="stylesheet" href="static/listening.css?v=aud1">
+</head>
+<body>
+  <aside id="sidebar">
+    <div class="side-head">
+      <span class="brand">vessel&#8202;·&#8202;writer</span>
+      <span class="side-actions">
+        <button id="new-folder" title="New folder">&#128193;+</button>
+        <button id="new-doc" title="New document (⌘⌥N)">&#128196;+</button>
+      </span>
+    </div>
+    <div id="tree" aria-label="files"></div>
+    <div id="rail" data-state="collapsed" data-conn="connecting">
+      <div id="rail-grip" title="Drag to resize"></div>
+      <div class="rail-head" role="button" tabindex="0" aria-expanded="false"
+           title="What Rodin is doing — click to expand">
+        <span class="rail-dot"></span>
+        <span class="rail-label">Activity</span>
+        <span class="rail-controls">
+          <span id="rail-status">live</span>
+          <button type="button" data-rail-action="full" title="Fullscreen">&#9974;</button>
+        </span>
+      </div>
+      <div id="rail-live" aria-live="polite"></div>
+      <div id="rail-feed" class="rail-feed" role="log" aria-label="activity feed"></div>
+    </div>
+  </aside>
+
+  <div id="rail-modal">
+    <div class="rail-modal-head"><span>Rodin &middot; activity</span><button id="rail-close" title="Collapse">&times;</button></div>
+    <div id="rail-modal-slot"></div>
+  </div>
+
+  <main id="main">
+    <header id="bar">
+      <button id="toggle-side" title="Toggle sidebar (⌘\)">&#9776;</button>
+      <input id="path" spellcheck="false" placeholder="untitled.md" aria-label="document path">
+      <span id="status">—</span>
+      <button id="view-btn" title="Reading view (⌘⇧P)" aria-pressed="false">&#128065;</button>
+      <button id="history-btn" title="Version history" aria-haspopup="true" aria-expanded="false">&#9719;</button>
+      <div id="mode-switch" role="group" aria-label="Layout">
+        <button class="mode-toggle" data-mode="writer" title="Write mode. Click for Chat mode">Write</button>
+      </div>
+      <button id="comments-btn" type="button" hidden title="Comments on this document" aria-pressed="false">Comments <span class="count">0</span></button>
+      <span id="listen-slot"></span>
+      <button id="chat-btn" title="Chat with Rodin (⌘J)">&#128172;</button>
+      <button class="fs-step fs-dec" id="editor-fs-dec" title="Smaller text">A&minus;</button>
+      <button class="fs-step fs-inc" id="editor-fs-inc" title="Larger text">A+</button>
+      <button id="appearance-btn" title="Appearance (theme &amp; typeface)" aria-haspopup="true" aria-expanded="false">Aa</button>
+      <button id="help-btn" title="Keyboard shortcuts" aria-haspopup="true" aria-expanded="false">?</button>
+      <button id="full-btn" title="Fullscreen writer (⌘⌥F)" aria-pressed="false">&#9974;</button>
+    </header>
+    <div id="help" hidden>
+      <h3>Shortcuts</h3>
+      <dl class="shortcuts">
+        <dt>Chat with Rodin</dt><dd><kbd>⌘</kbd><kbd>J</kbd></dd>
+        <dt>Reading view ↔ edit</dt><dd><kbd>⌘</kbd><kbd>⇧</kbd><kbd>P</kbd></dd>
+        <dt>New document</dt><dd><kbd>⌘</kbd><kbd>⌥</kbd><kbd>N</kbd></dd>
+        <dt>Save now</dt><dd><kbd>⌘</kbd><kbd>S</kbd></dd>
+        <dt>Zen mode</dt><dd><kbd>⌘</kbd><kbd>\</kbd></dd>
+        <dt>Fullscreen writer (Esc leaves)</dt><dd><kbd>⌘</kbd><kbd>⌥</kbd><kbd>F</kbd></dd>
+      </dl>
+      <p class="help-note">Tip: select text in your draft, right-click → “Ask Rodin about this.” On Windows/Linux use Ctrl in place of ⌘.</p>
+    </div>
+    <div id="history" hidden>
+      <h3>Version history</h3>
+      <div id="history-list"></div>
+    </div>
+    <div id="preview-bar" hidden>
+      <span id="preview-label"></span>
+      <span class="preview-actions">
+        <button id="preview-restore">Restore this version</button>
+        <button id="preview-exit">Back to current</button>
+      </span>
+    </div>
+    <div id="appearance" hidden>
+      <h3>Theme</h3>
+      <div class="choice-group" data-kind="theme">
+        <button data-value="system">System <span class="tick">✓</span></button>
+        <button data-value="light">Light <span class="tick">✓</span></button>
+        <button data-value="sepia">Sepia <span class="tick">✓</span></button>
+        <button data-value="dark">Dark <span class="tick">✓</span></button>
+        <button data-value="night">Night <span class="tick">✓</span></button>
+        <button data-value="nord">Nord <span class="tick">✓</span></button>
+        <button data-value="gruvbox">Gruvbox <span class="tick">✓</span></button>
+        <button data-value="forest">Everforest <span class="tick">✓</span></button>
+        <button data-value="rose">Rosé Pine <span class="tick">✓</span></button>
+        <button data-value="solarized">Solarized <span class="tick">✓</span></button>
+      </div>
+      <h3>Typeface</h3>
+      <div class="choice-group" data-kind="font">
+        <button data-value="book">Book serif <span class="tick">✓</span></button>
+        <button data-value="modern">Modern serif <span class="tick">✓</span></button>
+        <button data-value="sans">Humanist sans <span class="tick">✓</span></button>
+        <button data-value="mono">Monospace <span class="tick">✓</span></button>
+      </div>
+      <h3>Width</h3>
+      <div class="choice-group" data-kind="width">
+        <button data-value="centered">Centered <span class="tick">✓</span></button>
+        <button data-value="full">Full width <span class="tick">✓</span></button>
+      </div>
+    </div>
+    <div id="editor"></div>
+    <article id="preview" class="rendered" hidden></article>
+  </main>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="static/vendor/marked/marked.min.js"></script>
+  <script src="static/vendor/mermaid/mermaid.min.js"></script>
+  <script type="module" src="static/app.js?v=aud1"></script>
+  <script src="static/panel.js?v=aud1"></script>
+  <script src="static/rail.js?v=aud1"></script>
+  <script src="static/listening.js?v=aud1"></script>
+</body>
+</html>

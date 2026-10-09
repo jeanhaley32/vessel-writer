@@ -1,0 +1,120 @@
+/* The activity rail, at the bottom of the sidebar. Collapsed it is one live
+   line; expanded it is a scrollable feed; the expand button lifts the feed
+   into the fullscreen overlay. The structured feed is the rail's only source:
+   there is no raw terminal pane, so nothing here can show tool output.
+
+   The sidebar is outside both layout modes' geometry, so the rail is present in
+   chat mode, writer mode and with no mode without any per-mode rules. */
+
+#rail {
+  margin-top: auto; flex: 0 0 auto; position: relative;
+  border-top: 1px solid var(--hair); background: var(--side);
+  container-type: inline-size;
+}
+
+#rail-grip { height: 6px; cursor: row-resize; margin-top: -3px; }
+#rail-grip:hover { background: var(--accent); opacity: .4; }
+body.row-resizing { cursor: row-resize; user-select: none; }
+#rail[data-state="collapsed"] #rail-grip { visibility: hidden; }
+
+.rail-head {
+  display: flex; align-items: center; gap: .4rem; padding: .35rem .6rem .3rem;
+  font-size: .64rem; text-transform: uppercase; letter-spacing: .12em;
+  color: var(--ink-soft); cursor: pointer;
+}
+.rail-head:hover { color: var(--ink); }
+.rail-dot {
+  width: .45rem; height: .45rem; border-radius: 50%; flex: 0 0 auto;
+  background: #3a9d5d; animation: rail-pulse 2s ease-in-out infinite;
+}
+#rail[data-conn="reconnecting"] .rail-dot,
+#rail[data-conn="connecting"] .rail-dot { background: #c08a2e; }
+#rail[data-conn="offline"] .rail-dot { background: var(--ink-soft); animation: none; }
+@keyframes rail-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .rail-dot { animation: none; } }
+
+.rail-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rail-controls { margin-left: auto; display: flex; align-items: center; gap: .25rem; flex: 0 0 auto; }
+#rail-status { font-size: .58rem; text-transform: none; letter-spacing: 0; opacity: .6; }
+/* The sidebar can be dragged down to 160px, and the sidebar clips. The buttons
+   must stay reachable before the label or the status word do. */
+@container (max-width: 230px) { #rail-status { display: none; } }
+
+.rail-controls button {
+  background: none; border: 1px solid var(--hair); color: var(--ink-soft);
+  font-size: .58rem; text-transform: uppercase; letter-spacing: .06em;
+  padding: .1rem .3rem; border-radius: 3px; cursor: pointer; line-height: 1.4;
+}
+.rail-controls button:hover { color: var(--ink); border-color: var(--accent); }
+.rail-controls button[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+
+/* Collapsed: one line, ambient. It is clipped rather than wrapped, because a
+   wrapping line would make the rail's height jump as events arrive. */
+#rail-live {
+  display: none; padding: 0 .6rem .4rem;
+  font-family: var(--editor-font, ui-monospace, monospace);
+  font-size: .62rem; line-height: 1.4; color: var(--ink-soft);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#rail[data-state="collapsed"] #rail-live { display: block; }
+#rail-live[data-kind="tool"] { color: var(--accent); }
+#rail-live:empty::after { content: "idle"; opacity: .5; }
+
+.rail-feed {
+  display: none; height: var(--rail-h, 8.5rem);
+  overflow-y: auto; overflow-x: hidden; user-select: text;
+  padding: .1rem .6rem .5rem;
+  font-family: var(--editor-font, ui-monospace, monospace); font-size: .6rem; line-height: 1.4;
+}
+#rail[data-state="open"] .rail-feed { display: block; }
+
+.rail-row {
+  display: grid; grid-template-columns: auto 1fr auto; gap: .35rem;
+  padding: .18rem 0; border-top: 1px solid var(--hair); align-items: baseline;
+}
+.rail-row:first-child { border-top: none; }
+.rail-tag {
+  font-size: .54rem; text-transform: uppercase; letter-spacing: .08em;
+  padding: .05rem .25rem; border-radius: 3px; white-space: nowrap;
+  background: var(--hair); color: var(--ink-soft);
+}
+.rail-text { color: var(--ink-soft); word-break: break-word; white-space: pre-wrap; }
+.rail-when { font-size: .52rem; opacity: .45; white-space: nowrap; }
+
+.rail-row[data-kind="thinking"] .rail-text { font-style: italic; }
+.rail-row[data-kind="tool"] .rail-tag { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
+.rail-row[data-kind="tool"] .rail-text { font-family: var(--editor-font, ui-monospace, monospace); }
+.rail-row[data-kind="say"] .rail-text { color: var(--ink); font-style: normal; }
+.rail-row[data-kind="say"] .rail-tag { background: var(--accent); color: var(--paper); }
+
+/* Fullscreen overlay — anchored to the rail's own corner and scaled up from it. */
+#rail-modal {
+  position: fixed; left: 12px; bottom: 12px; z-index: 300;
+  width: min(60vw, 680px); height: min(68vh, 560px); display: flex; flex-direction: column;
+  background: var(--paper); border: 1px solid var(--hair); border-radius: 10px;
+  box-shadow: 0 20px 60px -18px var(--shadow);
+  transform: scale(.05); transform-origin: bottom left; opacity: 0;
+  pointer-events: none; visibility: hidden;
+  transition: transform .17s cubic-bezier(.2,.8,.3,1), opacity .17s ease, visibility 0s linear .17s;
+}
+#rail-modal.open {
+  transform: scale(1); opacity: 1; pointer-events: auto; visibility: visible;
+  transition: transform .17s cubic-bezier(.2,.8,.3,1), opacity .17s ease;
+}
+.rail-modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .6rem .9rem; border-bottom: 1px solid var(--hair); font-family: var(--ui-font);
+  font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-soft);
+}
+.rail-modal-head button {
+  background: none; border: none; color: var(--ink); font-size: 1.3rem;
+  line-height: 1; cursor: pointer; padding: .1rem .4rem;
+}
+#rail-modal-slot { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* Inside the overlay the feed fills the panel instead of the rail's saved height. */
+#rail-modal-slot .rail-feed {
+  display: block; height: auto; flex: 1; min-height: 0;
+  padding: .6rem 1rem; font-size: .82rem; line-height: 1.5;
+}
+#rail-modal-slot .rail-tag { font-size: .62rem; }
+#rail-modal-slot .rail-when { font-size: .62rem; }

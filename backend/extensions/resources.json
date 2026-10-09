@@ -1,0 +1,16 @@
+{
+ "resources": [
+  {
+   "name": "Writer",
+   "url": "/writer/",
+   "icon": "pencil",
+   "note": "this app"
+  },
+  {
+   "name": "Grafana",
+   "url": ":3000",
+   "icon": "gauge",
+   "note": "example: a bare port means this host, that port"
+  }
+ ]
+}

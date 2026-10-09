@@ -1,0 +1,35 @@
+/* The listening indicator. A pill with a state dot, deliberately not a
+   segmented pair like #mode-switch beside it: layout and listening are
+   different axes and must not read as one control. */
+#listen-toggle {
+  display: inline-flex; align-items: center; gap: .38rem;
+  background: none; border: 1px solid var(--hair); border-radius: 999px;
+  color: var(--ink-soft); font-size: .72rem; letter-spacing: .03em;
+  padding: .18rem .6rem .18rem .5rem; cursor: pointer; margin-left: .35rem;
+  font-variant-numeric: tabular-nums;
+}
+#listen-toggle .listen-dot {
+  width: .5rem; height: .5rem; border-radius: 50%;
+  background: transparent; border: 1px solid var(--ink-soft);
+}
+#listen-toggle[data-state="listening"] { color: var(--accent); border-color: var(--accent); }
+#listen-toggle[data-state="listening"] .listen-dot {
+  background: var(--accent); border-color: var(--accent);
+  animation: listen-pulse 2.4s ease-in-out infinite;
+}
+#listen-toggle[data-state="listening"][data-error] { border-style: dashed; }
+#listen-toggle[data-state="unknown"] { border-style: dotted; opacity: .7; }
+#listen-toggle[data-state="unknown"] .listen-dot { border-style: dotted; }
+@keyframes listen-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { #listen-toggle .listen-dot { animation: none; } }
+@media (max-width: 640px) { #listen-toggle { min-height: 2.25rem; } }
+
+/* Rodin-is-working indicator beside the listening pill */
+#rodin-busy { display: inline-flex; align-items: center; gap: .35rem; margin-left: .4rem;
+  font-size: .72rem; color: var(--ink-soft); white-space: nowrap; }
+#rodin-busy[hidden] { display: none; }
+#rodin-busy .busy-spin { width: .7rem; height: .7rem; border-radius: 50%;
+  border: 2px solid var(--hair); border-top-color: var(--accent); animation: busy-spin .8s linear infinite; }
+#rodin-busy[data-state="queued"] .busy-spin { animation: none; border-color: var(--hair); }
+@keyframes busy-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { #rodin-busy .busy-spin { animation: none; border-top-color: var(--accent); } }

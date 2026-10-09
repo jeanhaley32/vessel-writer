@@ -1,0 +1,97 @@
+/* Viewport layout: the fullscreen writer and the small-screen rules.
+
+   Loaded last on purpose. Several rules here share a selector's specificity
+   with one in style.css or panel.css and win only by coming later, which is
+   the same trick those files already play on each other. */
+
+/* --- fullscreen writer ----------------------------------------------------
+   One body class and one flag, exactly as the chat's fullscreen does it: the
+   document takes the whole viewport, and nothing underneath is written, so
+   leaving drops back into whatever layout, mode or zen state was there. It
+   supersedes zen rather than composing with it: zen's receding header relies
+   on hover, and the header is the only way out of here. */
+body.writer-full #sidebar,
+body.writer-full #sidebar-grip,
+body.writer-full #chat-panel,
+body.writer-full #chat-pill,
+body.writer-full #chat-bubble,
+body.writer-full #rail-modal { display: none; }
+body.writer-full #main { flex: 1 1 auto; width: 100%; padding-bottom: 0; }
+body.writer-full #bar { opacity: 1; }
+body.writer-full #bar > :not(#full-btn):not(#path):not(#status) { display: none; }
+
+#full-btn { background: none; border: none; color: var(--ink-soft); cursor: pointer;
+  font-size: 1rem; padding: .2rem .4rem; line-height: 1; }
+#full-btn:hover, #full-btn[aria-pressed="true"] { color: var(--accent); }
+
+/* --- every width ---------------------------------------------------------- */
+/* flex:1 alone leaves #main at its content's minimum width, which is the
+   header's full row of controls: at 900px that is 42px of page overflow, at
+   a phone width it is most of the page. */
+#main { min-width: 0; }
+#bar { flex-wrap: wrap; row-gap: .3rem; }
+/* the drag surfaces: without this a touch starts a scroll, not a drag */
+.chat-head, .bubble-head, #chat-pill, .chat-dock-grip, #sidebar-grip, #rail-grip { touch-action: none; }
+
+@media (hover: none) {
+  .row-actions { display: inline-flex; }
+  body.zen #bar { opacity: 1; }
+}
+
+/* --- unfolded tablet: the strip and the chat have to share ~900px -------- */
+@media (max-width: 1024px) {
+  :root { --strip-w: 18rem; }
+}
+
+/* --- folded phone ---------------------------------------------------------
+   Everything stacks. The sidebar becomes a drawer over the page (body.side-open,
+   toggled by the same button that toggles zen on a desktop, never persisted);
+   a docked or chat-mode panel becomes a slab under the document instead of a
+   column beside it; the popovers become bottom sheets so a wrapped header
+   cannot sit over them. The activity rail stays inside the drawer. */
+@media (max-width: 640px) {
+  body { flex-direction: column; }
+  body #sidebar, body.zen #sidebar {
+    position: fixed; top: 0; left: 0; height: 100%; z-index: 250;
+    width: min(var(--sidebar-w, 250px), 85vw); margin-left: 0;
+    transform: translateX(-100%); transition: transform .18s ease;
+  }
+  body.side-open #sidebar { transform: none; box-shadow: 0 0 40px rgba(0, 0, 0, .35); }
+  #sidebar-grip { display: none; }
+  .node { padding-top: .55rem; padding-bottom: .55rem; }
+
+  #main { height: auto; flex: 1 1 0; min-height: 0; width: 100%; }
+  #bar { gap: .35rem; padding: .45rem .6rem; }
+  #bar button, #mode-switch button { min-height: 2.25rem; min-width: 2.25rem; }
+  #mode-switch .mode-toggle, #chat-panel .chat-head .mode-toggle { min-height: 2.25rem; min-width: 2.25rem; }
+  #bar .fs-step, #chat-panel .chat-head .fs-step { min-height: 2.25rem; min-width: 2.25rem; }
+  #status { min-width: 0; }
+
+  #appearance, #history, #help {
+    position: fixed; top: auto; right: 0; bottom: 0; left: 0; z-index: 260;
+    width: auto; max-height: 70vh; overflow-y: auto; border-radius: 12px 12px 0 0;
+  }
+
+  body.chat-docked #chat-panel {
+    flex: 0 0 50vh; height: auto; width: auto;
+    border-left: none; border-top: 1px solid var(--chat-hair);
+  }
+  body.chat-docked #chat-panel .chat-dock-grip { display: none; }
+
+  /* chat mode on a phone: the activity stream is a band above the chat, not a
+     drawer, because the drawer's toggle lives in the hidden document header */
+  body.mode-chat #sidebar {
+    position: static; transform: none; width: 100%; height: 30vh; flex: 0 0 30vh;
+    box-shadow: none; border-right: none; border-bottom: 1px solid var(--hair);
+  }
+  body.mode-chat #chat-panel:not([hidden]) {
+    flex: 1 1 0; height: auto; min-height: 0;
+    border-left: none; border-top: 1px solid var(--chat-hair);
+  }
+  body.mode-writer { grid-template-columns: minmax(0, 1fr); }
+  body.mode-writer #main, body.mode-writer #chat-panel:not([hidden]) { grid-column: 1; }
+  body.mode-writer.chat-bar-open #chat-panel:not([hidden]) { height: min(var(--chat-bar-open-h, 22rem), 60vh); }
+
+  #chat-bubble { max-width: calc(100vw - 2rem); }
+  #rail-modal { left: 0; bottom: 0; width: 100vw; height: 100%; border-radius: 0; }
+}

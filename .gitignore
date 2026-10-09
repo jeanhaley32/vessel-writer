@@ -1,0 +1,9 @@
+.venv
+__pycache__/
+*.pyc
+ingestion.env
+client.log
+insight-log/
+state/
+bin/
+/writer-mcp

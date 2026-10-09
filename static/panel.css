@@ -1,0 +1,284 @@
+/* vessel chat pane — a movable, minimizable chat dock that talks to the relay.
+   Portable: depends only on the app's palette tokens (--paper/--ink/etc.),
+   falling back to sane defaults if they're absent. */
+:root {
+  --chat-accent: var(--accent, #7a5c2e);
+  --chat-paper: var(--paper, #faf8f3);
+  --chat-ink: var(--ink, #23201a);
+  --chat-soft: var(--ink-soft, #6b6456);
+  --chat-hair: var(--hair, #e7e0d2);
+  --chat-side: var(--side, #f2ede1);
+  --chat-me: var(--sel, #e8dcc0);
+}
+
+#chat-panel {
+  position: fixed; z-index: 200; width: 22rem; min-width: 15rem; max-width: calc(100vw - 2rem);
+  height: 28rem; min-height: 13rem; max-height: calc(100vh - 2rem);
+  display: flex; flex-direction: column;
+  background: var(--chat-paper); color: var(--chat-ink);
+  border: 1px solid var(--chat-hair); border-radius: 12px;
+  box-shadow: 0 18px 50px -14px rgba(0,0,0,.45);
+  font-family: var(--ui-font, system-ui, sans-serif);
+  overflow: hidden; resize: both;
+}
+#chat-panel[hidden] { display: none; }
+
+/* docked (anchored-right) mode: the panel becomes a full-height right-hand
+   column of the <body> flex row; #main flexes to fill the space between the
+   sidebar and the chat, so the editor reflows automatically. position:relative
+   (not static) so the resize grip anchors to the panel. */
+body.chat-docked #chat-panel {
+  position: relative; flex: 0 0 var(--chat-dock-w, 24%);
+  width: auto; height: 100vh; min-height: 0; max-height: none; max-width: none;
+  border-radius: 0; border: none; border-left: 1px solid var(--chat-hair);
+  box-shadow: none; resize: none;
+}
+/* fullscreen mode: the chat takes the entire viewport. Overrides both floating
+   and docked geometry, so it works from either state and returns to whichever
+   one it came from. Higher z-index than the pill so nothing floats over it. */
+body.chat-full #chat-panel {
+  position: fixed; inset: 0; z-index: 300;
+  width: 100vw; height: 100vh;
+  max-width: none; max-height: none; min-width: 0; min-height: 0;
+  flex: none;
+  border: none; border-radius: 0; box-shadow: none; resize: none;
+}
+body.chat-full #chat-panel .chat-dock-grip { display: none; }
+/* Reading long replies full-width is unpleasant, so constrain the transcript
+   itself rather than the window it sits in. */
+body.chat-full #chat-panel .chat-body,
+body.chat-full #chat-panel .chat-input { max-width: 52rem; width: 100%; margin-left: auto; margin-right: auto; }
+
+.chat-dock-grip { display: none; }
+body.chat-docked #chat-panel .chat-dock-grip {
+  display: block; position: absolute; left: 0; top: 0; width: 6px; height: 100%;
+  cursor: col-resize; z-index: 2; }
+body.chat-docked #chat-panel .chat-dock-grip:hover { background: var(--chat-accent); opacity: .5; }
+body.col-resizing { cursor: col-resize; user-select: none; }
+/* minimized state: the panel hides entirely and folds to #chat-pill */
+#chat-pill { position: fixed; right: 1.2rem; bottom: 1.2rem; z-index: 205;
+  display: inline-flex; align-items: center; gap: .45rem;
+  background: var(--chat-side); color: var(--chat-ink); border: 1px solid var(--chat-hair);
+  border-radius: 999px; padding: .45rem .85rem; cursor: pointer;
+  box-shadow: 0 8px 24px -8px rgba(0,0,0,.4);
+  font-family: var(--ui-font, system-ui, sans-serif); font-size: .82rem; user-select: none; }
+#chat-pill[hidden] { display: none; }
+#chat-pill:hover { border-color: var(--chat-accent); color: var(--chat-accent); }
+#chat-pill.dragging { cursor: grabbing; }
+#chat-pill:focus-visible { outline: 2px solid var(--chat-accent); outline-offset: 2px; }
+#chat-pill .pill-dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--chat-soft); }
+#chat-pill.live .pill-dot { background: #3a9d5d; }
+#chat-pill.alert { border-color: var(--chat-accent); }
+#chat-pill.alert .pill-dot { background: var(--chat-accent); animation: pill-pulse 1.4s ease-in-out infinite; }
+@keyframes pill-pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { #chat-pill.alert .pill-dot { animation: none; } }
+
+.chat-head { display: flex; align-items: center; gap: .5rem; padding: .55rem .7rem;
+  background: var(--chat-side); border-bottom: 1px solid var(--chat-hair); cursor: grab; user-select: none; }
+.chat-head.dragging { cursor: grabbing; }
+.chat-title { font-size: .74rem; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--chat-soft); font-weight: 600; flex: 1; }
+.chat-dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--chat-soft); }
+.chat-dot.live { background: #3a9d5d; }
+.chat-head button { background: none; border: none; color: var(--chat-soft); cursor: pointer;
+  font-size: 1rem; line-height: 1; padding: .1rem .3rem; }
+.chat-head button:hover { color: var(--chat-accent); }
+
+/* chat text size — driven by --chat-fs on #chat-panel (A-/A+ in the header),
+   independent of the editor's own text-size setting. */
+.chat-body { flex: 1; overflow-y: auto; padding: .7rem; display: flex; flex-direction: column; gap: .5rem;
+  font-size: var(--chat-fs, 14px);
+  /* conversation text must be selectable/copyable (the head/pill set none for dragging) */
+  -webkit-user-select: text; user-select: text; cursor: text; }
+.msg { max-width: 85%; padding: .45rem .7rem; border-radius: 10px; font-size: 1em; line-height: 1.5;
+  white-space: pre-wrap; word-break: break-word; }
+.msg.user { align-self: flex-end; background: var(--chat-me); color: var(--chat-ink); border-bottom-right-radius: 3px; }
+.msg.rodin { align-self: flex-start; background: var(--chat-side); color: var(--chat-ink);
+  border: 1px solid var(--chat-hair); border-bottom-left-radius: 3px; }
+.msg .quote { display: block; border-left: 2px solid var(--chat-accent); padding-left: .5rem;
+  margin-bottom: .3rem; color: var(--chat-soft); font-style: italic; font-size: .82rem; }
+
+.chat-input { display: flex; gap: .4rem; padding: .5rem; border-top: 1px solid var(--chat-hair); background: var(--chat-side); }
+.chat-input textarea { flex: 1; resize: none; height: 2.2rem; max-height: 8rem; background: var(--chat-paper);
+  border: 1px solid var(--chat-hair); border-radius: 8px; color: var(--chat-ink);
+  font-family: var(--ui-font, system-ui, sans-serif); font-size: var(--chat-fs, 14px); padding: .4rem .5rem; }
+.chat-input textarea:focus { outline: none; border-color: var(--chat-accent); }
+.chat-input button { background: var(--chat-paper); border: 1px solid var(--chat-accent); color: var(--chat-accent);
+  border-radius: 8px; padding: 0 .8rem; font-size: .85rem; cursor: pointer; }
+.chat-input button:hover { background: var(--chat-me); }
+
+/* reply bubble shown when the pane is minimized/closed */
+#chat-bubble { position: fixed; z-index: 210; max-width: 24rem; width: max-content;
+  background: var(--chat-paper); color: var(--chat-ink); border: 1px solid var(--chat-hair);
+  border-left: 3px solid var(--chat-accent); border-radius: 10px; padding: .6rem .75rem;
+  box-shadow: 0 14px 40px -12px rgba(0,0,0,.45); font-family: var(--ui-font, system-ui, sans-serif); font-size: .9rem; }
+#chat-bubble[hidden] { display: none; }
+#chat-bubble .bubble-head { display: flex; align-items: center; gap: .5rem; margin-bottom: .3rem; }
+#chat-bubble .bubble-who { font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; color: var(--chat-soft); flex: 1; }
+.bubble-head { cursor: grab; }
+#chat-bubble.dragging .bubble-head { cursor: grabbing; }
+#chat-bubble .bubble-text { white-space: pre-wrap; line-height: 1.5; max-height: 40vh; overflow-y: auto;
+  -webkit-user-select: text; user-select: text; cursor: text; }
+#chat-bubble .bubble-actions { display: flex; gap: .5rem; margin-top: .5rem; }
+#chat-bubble button { background: none; border: 1px solid var(--chat-hair); color: var(--chat-soft);
+  border-radius: 6px; padding: .2rem .6rem; font-size: .78rem; cursor: pointer; }
+#chat-bubble button:hover { border-color: var(--chat-accent); color: var(--chat-accent); }
+
+/* editor right-click menu */
+#chat-ctx { position: fixed; z-index: 220; background: var(--chat-paper); border: 1px solid var(--chat-hair);
+  border-radius: 8px; box-shadow: 0 10px 30px -8px rgba(0,0,0,.4); padding: .25rem; }
+#chat-ctx[hidden] { display: none; }
+#chat-ctx button { display: block; width: 100%; background: none; border: none; color: var(--chat-ink);
+  text-align: left; padding: .4rem .7rem; border-radius: 6px; font-size: .85rem; cursor: pointer;
+  font-family: var(--ui-font, system-ui, sans-serif); }
+#chat-ctx button:hover { background: var(--chat-me); }
+
+
+/* --- relayC layout modes -------------------------------------------------
+   Chat mode gives the conversation the room and leaves the document as a
+   strip; writer mode inverts it and parks the chat as a bar along the bottom
+   of the editor column. Both are body-class overrides on top of the floating
+   and docked geometry above — the same trick chat-full uses — so no mode
+   persists any geometry of its own and leaving one restores what was there.
+   The bar spans #main only, never the viewport, so it cannot cover the
+   sidebar's activity rail or the toast. */
+
+/* Chat mode is the conversation, full screen. The document, file tree and
+   header step aside; the activity stream keeps the left quarter top to bottom,
+   always expanded; the chat takes the rest with its transcript held to a
+   readable width, as in fullscreen. The chat header's Write button is the way
+   back, since the header's mode switch is hidden with the document. */
+body.mode-chat #main,
+body.mode-chat #tree,
+body.mode-chat .side-head,
+body.mode-chat #sidebar-grip,
+body.mode-chat #rail-grip,
+body.mode-chat #rail-live { display: none; }
+body.mode-chat #rail { margin-top: 0; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; border-top: none; }
+body.mode-chat #rail .rail-feed { display: block; flex: 1 1 auto; height: auto; min-height: 0; }
+@media (min-width: 641px) {
+  body.mode-chat #sidebar, body.mode-chat.zen #sidebar { margin-left: 0; width: 25vw; flex: 0 0 25vw; min-width: 14rem; }
+}
+body.mode-chat #chat-panel:not([hidden]) {
+  position: relative; inset: auto;
+  flex: 1 1 auto; width: auto; height: 100vh;
+  min-width: 0; min-height: 0; max-width: none; max-height: none;
+  border-radius: 0; border: none; border-left: 1px solid var(--chat-hair);
+  box-shadow: none; resize: none;
+}
+body.mode-chat #chat-panel .chat-body,
+body.mode-chat #chat-panel .chat-input { max-width: 52rem; width: 100%; margin-left: auto; margin-right: auto; }
+body.mode-chat #chat-pill { display: none; }
+.chat-to-write { display: none; }
+body.mode-chat #chat-panel .chat-to-write { display: inline-block; }
+/* Chat mode's header stands in for the editor's, so it takes the editor
+   header's height and padding and the toggle doesn't jump between them. */
+body.mode-chat #chat-panel .chat-head { padding: .5rem .9rem; min-height: 47px; box-sizing: border-box; }
+
+/* Write mode: the chat shares the document's layer and sits in the page flow
+   directly beneath it, owning its own strip of the screen. The body becomes a
+   two-row grid in the editor column: the document takes what is left, and the
+   chat takes its bar's height (or the opened height). Opening the chat shrinks
+   the document instead of covering it. The left bar spans both rows. */
+body.mode-writer {
+  display: grid; height: 100vh;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+body.mode-writer #sidebar { grid-column: 1; grid-row: 1 / span 2; }
+body.mode-writer #main { grid-column: 2; grid-row: 1; height: auto; min-height: 0; }
+body.mode-writer #chat-panel:not([hidden]) {
+  position: relative; inset: auto; grid-column: 2; grid-row: 2;
+  width: auto; height: var(--chat-bar-h, 2.4rem);
+  min-width: 0; min-height: 0; max-width: none; max-height: none;
+  flex: none;
+  border: none; border-top: 1px solid var(--chat-hair); border-radius: 0;
+  box-shadow: none; resize: none;
+}
+body.mode-writer.chat-bar-open #chat-panel:not([hidden]) {
+  height: var(--chat-bar-open-h, 22rem);
+}
+body.mode-writer #chat-panel .chat-head.alert .chat-dot { background: var(--chat-accent); animation: pill-pulse 1.4s ease-in-out infinite; }
+/* collapsed, only the header is a target; expanded, the body returns */
+body.mode-writer #chat-panel .chat-body,
+body.mode-writer #chat-panel .chat-input,
+body.mode-writer #chat-panel .chat-dock-grip { display: none; }
+body.mode-writer.chat-bar-open #chat-panel .chat-body { display: flex; }
+body.mode-writer.chat-bar-open #chat-panel .chat-input { display: flex; }
+body.mode-writer #chat-panel .chat-head { cursor: pointer; }
+body.mode-writer #chat-pill { display: none; }
+
+/* a mode owns the geometry and whether the panel is on screen, so the
+   float/dock/fullscreen/minimise/close controls would lie; leaving the mode is
+   how the chat goes away. The dock grip would still resize (and persist) the
+   docked column underneath chat mode, so it goes too. */
+body.mode-chat #chat-panel .chat-dock,
+body.mode-chat #chat-panel .chat-full,
+body.mode-chat #chat-panel .chat-min,
+body.mode-chat #chat-panel .chat-close,
+body.mode-chat #chat-panel .chat-dock-grip,
+body.mode-writer #chat-panel .chat-dock,
+body.mode-writer #chat-panel .chat-full,
+body.mode-writer #chat-panel .chat-min,
+body.mode-writer #chat-panel .chat-close { display: none; }
+
+#mode-switch { display: inline-flex; gap: 0; margin-left: .2rem; }
+/* One toggle, two homes: the editor header in Write mode, the chat header in
+   Chat mode. Both selectors are spelled out so neither header's own button
+   rules can make it a different size in one mode than the other. */
+#mode-switch .mode-toggle,
+#chat-panel .chat-head .mode-toggle {
+  background: none; border: 1px solid var(--hair); border-radius: 4px; color: var(--ink-soft);
+  font: inherit; font-size: .72rem; line-height: 1.2; letter-spacing: .03em; text-transform: uppercase;
+  padding: .18rem .5rem; min-height: 0; min-width: 0; cursor: pointer;
+}
+#mode-switch .mode-toggle:hover,
+#chat-panel .chat-head .mode-toggle:hover { color: var(--accent); border-color: var(--accent); }
+#mode-switch button[aria-pressed="true"] { color: var(--accent); border-color: var(--accent); }
+
+/* Layers, top to bottom: (1) the left bar, the editor header and every menu
+   that drops from it; (2) the document and, in Write mode, Rodin's chat
+   beneath it in the same flow, neither covering the other. --z-chat is for the
+   chat when it is not in flow (Chat mode). One scale, so a new popover picks
+   its layer by name. Fullscreen chat, the phone drawer and the context menus
+   keep their own higher values. */
+:root { --z-chat: 100; --z-chrome: 150; --z-menu: 160; }
+#sidebar { position: relative; z-index: var(--z-chrome); }
+#sidebar-grip { z-index: var(--z-chrome); }
+#bar { position: relative; z-index: var(--z-chrome); }
+#appearance, #history, #help, .vw-comment-meta { z-index: var(--z-menu); }
+#chat-panel { z-index: var(--z-chat); }
+body.mode-writer #chat-panel:not([hidden]) { z-index: auto; }   /* in flow with the document, same layer */
+
+/* The toggle reads the same in both modes: words only, and one width, so the
+   control doesn't change shape when it changes what it says. */
+#mode-switch .mode-toggle, #chat-panel .chat-head .mode-toggle { min-width: 4.6rem; text-align: center; }
+/* In chat mode the chat header stands in for the editor's: same ground, same rule. */
+body.mode-chat #chat-panel .chat-head { background: transparent; border-bottom-color: transparent; }
+
+/* One text-size stepper everywhere text can be resized: the same A−/A+ pair,
+   the same look, one pixel a step. Each pane keeps its own size. */
+#bar .fs-step,
+#chat-panel .chat-head .fs-step {
+  background: none; border: none; color: var(--ink-soft); cursor: pointer;
+  font: inherit; font-size: .95rem; line-height: 1; padding: .2rem .35rem; min-width: 0;
+}
+#bar .fs-step:hover,
+#chat-panel .chat-head .fs-step:hover { color: var(--accent); }
+
+/* Write-mode split divider: a thin handle on the chat's top edge, only while
+   the chat is open under the document. */
+.chat-split-grip { display: none; }
+body.mode-writer.chat-bar-open #chat-panel .chat-split-grip {
+  display: block; position: absolute; top: -3px; left: 0; right: 0; height: 7px;
+  cursor: row-resize; z-index: 2; touch-action: none;
+}
+body.mode-writer.chat-bar-open #chat-panel .chat-split-grip:hover { background: var(--accent); opacity: .35; }
+
+.chat-input { flex-wrap: wrap; }
+.chat-attach { flex: 0 0 100%; display: flex; flex-wrap: wrap; gap: .4rem; }
+.chat-chip { position: relative; }
+.chat-chip img { display: block; height: 3.2rem; max-width: 6rem; object-fit: cover; border-radius: 4px; border: 1px solid var(--chat-hair); }
+.chat-chip button { position: absolute; top: -.35rem; right: -.35rem; width: 1.1rem; height: 1.1rem; padding: 0; line-height: 1; border-radius: 50%; font-size: .8rem; }
+.msg .chat-img { display: block; max-width: 100%; max-height: 18rem; margin: .35rem 0 .1rem; border-radius: 6px; }
+.chat-attach[hidden] { display: none; }
