@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -60,8 +61,9 @@ func TestCommentPostRefusesEmptyPath(t *testing.T) {
 
 func TestThereIsNoToolThatCanReplaceADocumentBody(t *testing.T) {
 	// The boundary is the point of the design, so it is asserted rather than
-	// left to a comment: documents are the owner's prose, and the model's only
-	// channel into a draft is additive, dismissible comments.
+	// left to a comment: documents are the owner's prose. The model writes into
+	// a draft only through comments and anchored edits (doc_edit), which change
+	// a quoted span; nothing can save, replace or delete a whole document.
 	for _, name := range registeredNames(t) {
 		lower := strings.ToLower(name)
 		if strings.Contains(lower, "write") || strings.Contains(lower, "save") ||
@@ -78,7 +80,7 @@ func TestTheExpectedToolsAreAllRegistered(t *testing.T) {
 		got[n] = true
 	}
 	for _, want := range []string{
-		"doc_read", "doc_list",
+		"doc_read", "doc_list", "doc_edit",
 		"comment_post", "comment_list", "comment_resolve",
 		"listening_get", "listening_set",
 	} {
@@ -86,7 +88,47 @@ func TestTheExpectedToolsAreAllRegistered(t *testing.T) {
 			t.Errorf("tool %q is not registered", want)
 		}
 	}
-	if len(got) != 7 {
-		t.Errorf("expected exactly 7 tools, got %d: %v", len(got), names)
+	if len(got) != 8 {
+		t.Errorf("expected exactly 8 tools, got %d: %v", len(got), names)
+	}
+}
+
+func TestDocEditRefusesMalformedEditsLocally(t *testing.T) {
+	c := toolsOnDeadWriter(t)
+	cases := []struct {
+		name string
+		in   editArgs
+		want string
+	}{
+		{"no edits", editArgs{Path: "a.md"}, "at least one edit"},
+		{"unknown op", editArgs{Path: "a.md", Ops: []editOp{{Op: "overwrite", Text: "x"}}}, "op must be"},
+		{"no anchor", editArgs{Path: "a.md", Ops: []editOp{{Op: "insert_after", Text: "x"}}}, "needs an anchor"},
+		{"no text", editArgs{Path: "a.md", Ops: []editOp{{Op: "append"}}}, "needs text"},
+		{"no path", editArgs{Ops: []editOp{{Op: "append", Text: "x"}}}, "path is required"},
+	}
+	for _, tc := range cases {
+		_, _, err := editDoc(context.Background(), c, tc.in)
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: want error containing %q, got %v", tc.name, tc.want, err)
+		}
+	}
+}
+
+func TestDocEditSendsTheEditsToTheEditEndpoint(t *testing.T) {
+	var gotPath string
+	var gotBody map[string]any
+	c, srv := newClient(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Write([]byte(`{"path":"a.md","hash":"h","changed":true,"applied":1}`))
+	})
+	defer srv.Close()
+	_, out, err := editDoc(context.Background(), c, editArgs{Path: "/a.md",
+		Ops: []editOp{{Op: "insert_after", Anchor: "Intro", Text: " more"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotPath != "/api/doc/edit" || gotBody["path"] != "a.md" || out.Applied != 1 {
+		t.Fatalf("path=%s body=%v out=%+v", gotPath, gotBody, out)
 	}
 }

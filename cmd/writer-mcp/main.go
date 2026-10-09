@@ -9,9 +9,10 @@
 // got talked to over raw HTTP while its owner used a real UI.
 //
 // What it deliberately cannot do: replace a document's body. Documents are
-// Jean's prose and the editor already owns his edits through Yjs. The model's
-// channel into a draft is comments, which are additive and dismissible. There
-// is no doc_write tool and adding one is not a small change.
+// Jean's prose and the editor already owns his edits through Yjs. The model
+// writes into a draft through comments and through doc_edit, whose edits are
+// anchored to quoted text and change only that span. There is no doc_write
+// tool and adding one is not a small change.
 package main
 
 import (
@@ -39,7 +40,7 @@ func main() {
 
 	srv := mcp.NewServer(&mcp.Implementation{
 		Name:    "writer",
-		Title:   "vessel-writer (documents read-only, comments read-write)",
+		Title:   "vessel-writer (anchored edits and comments; no whole-document writes)",
 		Version: "0.1.0",
 	}, nil)
 

@@ -26,6 +26,24 @@ type resolveArgs struct {
 	ID   string `json:"id" jsonschema:"the comment id to dismiss; omit to clear the document-level meta instead"`
 }
 
+type editOp struct {
+	Op     string `json:"op" jsonschema:"insert_after, insert_before, replace, or append"`
+	Anchor string `json:"anchor,omitempty" jsonschema:"exact text that is in the document now and appears exactly once; the edit lands next to it (or replaces it). Not used by append."`
+	Text   string `json:"text" jsonschema:"the text to insert, or the replacement (empty deletes the anchor)"`
+}
+
+type editArgs struct {
+	Path string   `json:"path" jsonschema:"the document to edit"`
+	Ops  []editOp `json:"ops" jsonschema:"edits applied in order, all or nothing"`
+}
+
+type editOut struct {
+	Path    string `json:"path"`
+	Hash    string `json:"hash"`
+	Changed bool   `json:"changed"`
+	Applied int    `json:"applied"`
+}
+
 type listeningArgs struct {
 	Listening bool `json:"listening" jsonschema:"true for active listening, false for solitude"`
 }
@@ -91,6 +109,36 @@ func postComment(ctx context.Context, c *Client, in commentArgs) (*mcp.CallToolR
 	return nil, out, err
 }
 
+// editDoc validates anchored edits locally and sends them. The writer finds
+// each anchor in the live text at the moment it applies the edit, so only the
+// quoted span changes and nothing the owner typed elsewhere is overwritten.
+func editDoc(ctx context.Context, c *Client, in editArgs) (*mcp.CallToolResult, editOut, error) {
+	path, err := cleanPath(in.Path)
+	if err != nil {
+		return nil, editOut{}, err
+	}
+	if len(in.Ops) == 0 {
+		return nil, editOut{}, fmt.Errorf("at least one edit is required")
+	}
+	for i, op := range in.Ops {
+		switch op.Op {
+		case "append", "insert_after", "insert_before":
+			if op.Text == "" {
+				return nil, editOut{}, fmt.Errorf("edit %d: %s needs text", i+1, op.Op)
+			}
+		case "replace":
+		default:
+			return nil, editOut{}, fmt.Errorf("edit %d: op must be insert_after, insert_before, replace or append, got %q", i+1, op.Op)
+		}
+		if op.Op != "append" && op.Anchor == "" {
+			return nil, editOut{}, fmt.Errorf("edit %d: %s needs an anchor quoted from the document", i+1, op.Op)
+		}
+	}
+	var out editOut
+	err = c.do(ctx, "POST", "/api/doc/edit", map[string]any{"path": path, "ops": in.Ops}, &out)
+	return nil, out, err
+}
+
 // registerTools wires every tool and returns the names it actually registered.
 // It returns them rather than exposing a hand-written list so a test can check
 // the design's central boundary — that nothing here can replace a document
@@ -123,6 +171,18 @@ func registerTools(s *mcp.Server, c *Client) []string {
 		var out map[string]any
 		err := c.do(ctx, "GET", "/api/structure", nil, &out)
 		return nil, out, err
+	})
+
+	mcp.AddTool(s, add(&mcp.Tool{
+		Name: "doc_edit",
+		Description: "Write into a document the way a collaborator would: insert after or before a " +
+			"quoted anchor, replace a quoted span, or append. Each anchor must appear exactly once in " +
+			"the document as it is now; if it is missing or ambiguous the whole request is refused, so " +
+			"read the document first. Edits land live in any open editor as Rodin's. It cannot replace " +
+			"a whole document. Use it when the owner has asked for text in the doc; for remarks about " +
+			"the writing, use comment_post.",
+	}), func(ctx context.Context, _ *mcp.CallToolRequest, in editArgs) (*mcp.CallToolResult, editOut, error) {
+		return editDoc(ctx, c, in)
 	})
 
 	mcp.AddTool(s, add(&mcp.Tool{

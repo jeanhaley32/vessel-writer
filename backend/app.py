@@ -130,20 +130,89 @@ async def put_doc(body: SaveBody):
             # session ended (server restart). Its copy can be stale, so it must
             # reload rather than write over the live document.
             raise HTTPException(409, "document has a live session; reload the editor")
+    return _store(body.path, content, body.title)
+
+
+def _store(path: str, content: str, title: str | None = None) -> dict:
     try:
-        res = vfs.save(body.path, content, body.title)
+        res = vfs.save(path, content, title)
     except ValueError as e:
         raise HTTPException(400, str(e))
+    if res.get("revived"):
+        registry.fire("on_undelete", vfs=vfs, path=res["path"])
     # extension hook: fire only when a NEW 30s version slot opens — not on the
     # frequent intra-slot autosaves — so ingestion embeds ~once per version, not
     # once per keystroke-pause.
-    if res.get("revived"):
-        registry.fire("on_undelete", vfs=vfs, path=res["path"])
     if res.get("new_version"):
         registry.fire("on_save", vfs=vfs, path=res["path"], hash=res["hash"])
     if res.get("changed"):
         registry.fire("on_change", vfs=vfs, path=res["path"], hash=res["hash"])
     return res
+
+
+# --- Anchored edits -----------------------------------------------------------
+# How a collaborator who is not an editor tab (Rodin, a script) writes into a
+# document: "insert this after X", "replace X with Y", "append this". Each edit
+# is located by quoting text that is in the document now, at the moment it is
+# applied, so it touches only its own span and can never write back a stale
+# copy over what the owner typed meanwhile. An anchor that is missing or
+# ambiguous refuses the whole request rather than guessing.
+
+class EditOp(BaseModel):
+    op: str                      # insert_after | insert_before | replace | append
+    text: str
+    anchor: str | None = None
+
+
+class EditBody(BaseModel):
+    path: str
+    ops: list[EditOp]
+
+
+def _apply_ops(content: str, ops: list[EditOp]) -> str:
+    for n, op in enumerate(ops, 1):
+        if op.op == "append":
+            joiner = "" if not content or content.endswith("\n") else "\n"
+            content = content + joiner + op.text
+            continue
+        if op.op not in ("insert_after", "insert_before", "replace"):
+            raise HTTPException(400, f"edit {n}: unknown op {op.op!r}")
+        if not op.anchor:
+            raise HTTPException(400, f"edit {n}: {op.op} needs an anchor")
+        count = content.count(op.anchor)
+        if count != 1:
+            reason = "is not in the document" if count == 0 else f"appears {count} times; quote more of it"
+            raise HTTPException(409, f"edit {n}: the anchor {reason}")
+        if op.op == "replace" and len(op.anchor) == len(content):
+            raise HTTPException(400, f"edit {n}: an edit may not replace the whole document")
+        at = content.index(op.anchor)
+        if op.op == "insert_before":
+            content = content[:at] + op.text + content[at:]
+        elif op.op == "insert_after":
+            end = at + len(op.anchor)
+            content = content[:end] + op.text + content[end:]
+        else:
+            content = content[:at] + op.text + content[at + len(op.anchor):]
+    return content
+
+
+@app.post("/api/doc/edit")
+async def edit_doc(body: EditBody):
+    if not body.ops:
+        raise HTTPException(400, "no edits given")
+    path = _norm(body.path)
+    doc = vfs.read(path)
+    if doc is None or path in {t["path"] for t in vfs.tombstones()}:
+        raise HTTPException(404, "not found")
+    session = _ysessions.get(path)
+    # No await between reading the live text and merging into it, so no tab's
+    # update can land in between: the edits apply to exactly this text.
+    current = _session_text(session) if session is not None else doc["content"]
+    updated = _apply_ops(current, body.ops)
+    if session is not None:
+        _merge_external(session, updated)
+    res = _store(path, updated)
+    return {**res, "applied": len(body.ops)}
 
 
 @app.post("/api/reconcile")

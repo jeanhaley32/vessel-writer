@@ -1,8 +1,8 @@
 # vessel-writer
 
 A self-hosted, distraction-free markdown writer for one person, built so that an
-AI collaborator can read along, comment on the draft, and talk about it, without
-ever being able to rewrite it.
+AI collaborator can read along, comment on the draft, talk about it, and write
+into it like a co-author, without ever being able to overwrite it.
 
 It was built for a personal home lab, where the collaborator is a Claude Code
 session reached through a small relay. The writer stands on its own: everything
@@ -34,6 +34,13 @@ optional and off unless configured.
   comment opens a thread you can reply in, and you can start threads of your own
   on selected text. Comments are additive and dismissible, and dismissing one
   archives it rather than deleting it.
+- **Anchored edits.** The assistant writes into a document the way a co-author
+  would: insert after or before a quoted passage, replace a quoted span, or
+  append (`POST /api/doc/edit`). Each anchor is found in the live text at the
+  moment the edit applies, so only that span changes, an open tab sees it
+  arrive with the assistant's cursor, and nothing typed elsewhere is lost. A
+  missing or ambiguous anchor refuses the whole request, and no edit can
+  replace a whole document.
 - **Chat pane.** A dockable, resizable chat with the assistant, alongside or under
   the document. It talks to a relay at `/relaychat/` (SSE + POST). The relay is a
   separate service and not part of this repository; without one, the pane stays
@@ -150,13 +157,14 @@ to the writer. Build it with `go build -o bin/writer-mcp ./cmd/writer-mcp` and
 register it with your MCP client. Pass `-base` for the writer's URL and
 `-token-file` (or `WRITER_TOKEN`) when auth is on.
 
-It has seven tools: `doc_read`, `doc_list`, `comment_post`, `comment_list`,
-`comment_resolve`, `listening_get`, `listening_set`.
+It has eight tools: `doc_read`, `doc_list`, `doc_edit`, `comment_post`,
+`comment_list`, `comment_resolve`, `listening_get`, `listening_set`.
 
 **There is deliberately no `doc_write`.** Documents are the owner's prose. The
-assistant's channel into a draft is comments, which are additive and
-dismissible. A test asserts that no registered tool can change a document's
-body, so this boundary cannot erode by accident. A non-2xx response, an
+assistant writes into a draft through comments and through `doc_edit`, whose
+edits are anchored to quoted text and change only that span. A test asserts
+that no registered tool can save, replace or delete a whole document, so this
+boundary cannot erode by accident. A non-2xx response, an
 unreachable writer and a wrong-shaped body each come back as an error, never as
 an empty result.
 
