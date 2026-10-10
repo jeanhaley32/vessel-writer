@@ -302,3 +302,7 @@ body.zen #bar:hover, body.zen #bar:focus-within { opacity: 1; }
 
 .cm-picture { padding: .4rem 0 .8rem; }
 .cm-picture img { display: block; max-width: 100%; max-height: 28rem; border-radius: 4px; }
+
+/* Text the assistant wrote: a faint wash in its cursor colour, so the owner can
+   tell his lines from its at a glance. Anything he types over it is his. */
+.cm-by-assistant { background: rgba(184, 86, 31, .10); border-bottom: 1px dotted rgba(184, 86, 31, .45); }

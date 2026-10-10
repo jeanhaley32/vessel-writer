@@ -113,6 +113,9 @@ async def get_doc(path: str, collab: bool = False):
         doc["content"] = _session_text(session)
         doc["yseed"] = session["seed"]
         doc["ysession"] = session["id"]
+        # The session's own Yjs client writes every non-tab edit (the
+        # assistant's), so a tab can attribute text by client id.
+        doc["ywriter"] = session["doc"].client_id
     return doc
 
 
@@ -169,31 +172,32 @@ class EditBody(BaseModel):
     ops: list[EditOp]
 
 
-def _apply_ops(content: str, ops: list[EditOp]) -> str:
+def _apply_ops(content: str, ops: list[EditOp]) -> tuple[str, list[tuple[int, int, str]]]:
+    """The edited text, and the (at, delete, insert) splices that produce it."""
+    splices = []
     for n, op in enumerate(ops, 1):
         if op.op == "append":
             joiner = "" if not content or content.endswith("\n") else "\n"
-            content = content + joiner + op.text
-            continue
-        if op.op not in ("insert_after", "insert_before", "replace"):
-            raise HTTPException(400, f"edit {n}: unknown op {op.op!r}")
-        if not op.anchor:
-            raise HTTPException(400, f"edit {n}: {op.op} needs an anchor")
-        count = content.count(op.anchor)
-        if count != 1:
-            reason = "is not in the document" if count == 0 else f"appears {count} times; quote more of it"
-            raise HTTPException(409, f"edit {n}: the anchor {reason}")
-        if op.op == "replace" and len(op.anchor) == len(content):
-            raise HTTPException(400, f"edit {n}: an edit may not replace the whole document")
-        at = content.index(op.anchor)
-        if op.op == "insert_before":
-            content = content[:at] + op.text + content[at:]
-        elif op.op == "insert_after":
-            end = at + len(op.anchor)
-            content = content[:end] + op.text + content[end:]
+            splice = (len(content), 0, joiner + op.text)
         else:
-            content = content[:at] + op.text + content[at + len(op.anchor):]
-    return content
+            if op.op not in ("insert_after", "insert_before", "replace"):
+                raise HTTPException(400, f"edit {n}: unknown op {op.op!r}")
+            if not op.anchor:
+                raise HTTPException(400, f"edit {n}: {op.op} needs an anchor")
+            count = content.count(op.anchor)
+            if count != 1:
+                reason = "is not in the document" if count == 0 else f"appears {count} times; quote more of it"
+                raise HTTPException(409, f"edit {n}: the anchor {reason}")
+            if op.op == "replace" and len(op.anchor) == len(content):
+                raise HTTPException(400, f"edit {n}: an edit may not replace the whole document")
+            at = content.index(op.anchor)
+            splice = {"insert_before": (at, 0, op.text),
+                      "insert_after": (at + len(op.anchor), 0, op.text),
+                      "replace": (at, len(op.anchor), op.text)}[op.op]
+        at, delete, insert = splice
+        content = content[:at] + insert + content[at + delete:]
+        splices.append(splice)
+    return content, splices
 
 
 @app.post("/api/doc/edit")
@@ -208,10 +212,14 @@ async def edit_doc(body: EditBody):
     # No await between reading the live text and merging into it, so no tab's
     # update can land in between: the edits apply to exactly this text.
     current = _session_text(session) if session is not None else doc["content"]
-    updated = _apply_ops(current, body.ops)
+    updated, splices = _apply_ops(current, body.ops)
     if session is not None:
-        _merge_external(session, updated)
+        _apply_splices(session, splices)
     res = _store(path, updated)
+    # Tell listeners which text is the assistant's: anything that keeps a
+    # baseline of "what the owner has written" applies the same edits to it,
+    # so the assistant's own words are never reported back to it as his.
+    registry.fire("on_assistant_edit", path=path, rebase=lambda text: _apply_ops(text, body.ops)[0])
     return {**res, "applied": len(body.ops)}
 
 
@@ -327,29 +335,42 @@ def _session_text(session: dict) -> str:
 
 
 def _merge_external(session: dict, new: str) -> None:
-    """Turn a whole-text write into a minimal Yjs edit and send it to the tabs.
-    pycrdt indexes text by UTF-8 byte, so character offsets are converted."""
-    doc = session["doc"]
-    text = doc.get("content", type=Text)
-    old = str(text)
+    """Turn a whole-text write into a minimal Yjs edit and send it to the tabs."""
+    old = _session_text(session)
     if old == new:
         return
-    before = doc.get_state()
     ops = difflib.SequenceMatcher(None, old, new, autojunk=False).get_opcodes()
+    # Back to front, so each splice's position is still an offset into `old`.
+    _apply_splices(session, [(i1, i2 - i1, new[j1:j2])
+                             for tag, i1, i2, j1, j2 in reversed(ops) if tag != "equal"])
+
+
+def _apply_splices(session: dict, splices: list[tuple[int, int, str]]) -> None:
+    """Apply (at, delete, insert) splices, each positioned in the text as the
+    ones before it left it, as one Yjs transaction by the session's own client,
+    then broadcast it and show Rodin's cursor after the last one. That client is
+    how a tab attributes text to Rodin, so the splices must be exactly the
+    edit: an anchored insert goes in as itself, never as an equivalent diff
+    that would shift which characters count as his. pycrdt indexes text by
+    UTF-8 byte, so character offsets are converted."""
+    if not splices:
+        return
+    doc = session["doc"]
+    text = doc.get("content", type=Text)
+    before = doc.get_state()
     with doc.transaction():
-        for tag, i1, i2, j1, j2 in reversed(ops):
-            if tag == "equal":
-                continue
-            start, end = len(old[:i1].encode()), len(old[:i2].encode())
-            if end > start:
-                del text[start:end]
-            if j2 > j1:
-                text.insert(start, new[j1:j2])
+        for at, delete, insert in splices:
+            current = str(text)
+            start = len(current[:at].encode())
+            if delete:
+                del text[start:len(current[:at + delete].encode())]
+            if insert:
+                text.insert(start, insert)
     path = next(p for p, s in _ysessions.items() if s is session)
     _broadcast(path, base64.b64encode(doc.get_update(before)).decode())
-    first = ops[0] if ops[0][0] != "equal" else next(op for op in ops if op[0] != "equal")
+    at, _, insert = splices[-1]
     try:
-        _show_cursor(path, session, len(new[:first[4]].encode()))
+        _show_cursor(path, session, len(str(text)[:at + len(insert)].encode()))
     except Exception:
         # presence is a nicety; it must never fail the write it decorates
         log.exception("could not place Rodin's cursor in %s", path)

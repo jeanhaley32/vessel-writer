@@ -230,8 +230,27 @@ def _inject(text: str) -> tuple[bool, str | None]:
         return False, f"relay unreachable: {type(e).__name__}"
 
 
+def _on_assistant_edit(path=None, rebase=None, **_):
+    """The assistant edited this document. Apply the same edits to every
+    baseline held for it, so the next diff shows only what the owner wrote.
+    A baseline the edits cannot be applied to (its anchor is not in it) is left
+    alone: the assistant then sees its own words once, which is noise, not loss."""
+    if not path or rebase is None:
+        return
+    with _lock:
+        for baselines in (_pending, _last_sent):
+            if path in baselines:
+                try:
+                    baselines[path] = rebase(baselines[path])
+                except Exception:
+                    log.info("could not rebase the listening baseline for %s", path)
+        if _listening:
+            _persist_locked()
+
+
 # on_change, not on_save: on_save fires once per 30s version slot (it feeds
 # ingestion), so listening on it held edits for up to half a minute before the
 # settle timer even started.
 registry.on("on_change", _on_save)
+registry.on("on_assistant_edit", _on_assistant_edit)
 registry.route(router)

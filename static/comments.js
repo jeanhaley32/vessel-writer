@@ -10,7 +10,7 @@
 //     the editor's flow;
 //   - every dispatch carries effects only and never a selection;
 //   - a comment that arrives mid-keystroke waits in a queue until typing pauses.
-import { openComposer } from "./compose.js?v=aud1";
+import { openComposer } from "./compose.js?v=aut1";
 import { Decoration, StateEffect, StateField, EditorView }
   from "./vendor/editor/vessel-editor.bundle.mjs";
 

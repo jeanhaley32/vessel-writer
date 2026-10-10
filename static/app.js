@@ -4,8 +4,9 @@ import {
   indentWithTab, markdown, syntaxHighlighting, defaultHighlightStyle, yCollab,
   Awareness, encodeAwarenessUpdate, applyAwarenessUpdate,
 } from "./vendor/editor/vessel-editor.bundle.mjs";
-import { commentExtensions, commentsAttach, commentsDetach } from "./comments.js?v=aud1";
-import { imageExtensions } from "./images.js?v=aud1";
+import { commentExtensions, commentsAttach, commentsDetach } from "./comments.js?v=aut1";
+import { imageExtensions } from "./images.js?v=aut1";
+import { authorshipExtension } from "./authorship.js?v=aut1";
 
 const $ = (s) => document.querySelector(s);
 const editor = $("#editor"), pathInput = $("#path"), statusEl = $("#status"), treeEl = $("#tree"), toastEl = $("#toast");
@@ -21,6 +22,7 @@ let previewing = null;       // {hash, at} while viewing (read-only) an earlier 
 let currentHash = null;      // hash of the open doc's current version (to detect external changes)
 let ydoc = null, ytext = null;  // the open doc's CRDT (bound to CodeMirror via yCollab)
 let ySession = null;         // id of the server's live session this tab joined
+let yWriter = null;          // the session's own Yjs client id: text it created is the assistant's
 let lastStructJSON = "";     // last-seen /api/structure, for change polling
 let viewMode = false;        // reading view (rendered markdown) instead of the editor
 const viewBtn = $("#view-btn"), preview = $("#preview");
@@ -273,7 +275,7 @@ async function openDoc(path) {
   const doc = await api("GET", "api/doc?collab=1&path=" + encodeURIComponent(path));
   current = doc.path; pathInput.value = doc.path;
   lastSaved = doc.content; currentHash = doc.hash; dirty = false; setStatus("opened");
-  await buildEditor(doc.path, doc.content, doc.yseed, doc.ysession);   // CodeMirror + live CRDT for this document
+  await buildEditor(doc.path, doc.content, doc.yseed, doc.ysession, doc.ywriter);   // CodeMirror + live CRDT for this document
   selectedFolder = parentOf(path); render();
   if (viewMode) renderPreview();   // keep the reading view in sync when switching docs
   // A listener must never be able to stop a document opening.
@@ -345,7 +347,7 @@ function teardownEditor() {
   try { if (yes) yes.close(); } catch (_) {}
   try { if (view) view.destroy(); } catch (_) {}
   try { if (ydoc) ydoc.destroy(); } catch (_) {}
-  yes = null; view = null; ydoc = null; ytext = null; awareness = null; yPath = null; ySession = null;
+  yes = null; view = null; ydoc = null; ytext = null; awareness = null; yPath = null; ySession = null; yWriter = null;
 }
 
 // The server's session ended or was replaced (restart, move, delete). This tab's
@@ -366,10 +368,11 @@ async function rejoinSession() {
   } finally { rejoining = false; }
 }
 
-async function buildEditor(path, content, yseed, session) {
+async function buildEditor(path, content, yseed, session, writer) {
   teardownEditor();
   yPath = path;
   ySession = session || null;
+  yWriter = writer ?? null;
   ydoc = new Y.Doc();
   ytext = ydoc.getText("content");
   awareness = new Awareness(ydoc);
@@ -411,6 +414,7 @@ async function buildEditor(path, content, yseed, session) {
         yCollab(ytext, awareness),
         ...(() => { try { return commentExtensions(); } catch (e) { console.error("comment layer unavailable", e); return []; } })(),
         imageExtensions((msg) => toast(msg)),
+        authorshipExtension(() => (ytext ? { ytext, client: yWriter } : null)),
         EditorView.updateListener.of((u) => { if (u.docChanged && !applyingRemote) scheduleSave(); }),
       ],
     }),
