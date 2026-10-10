@@ -88,9 +88,11 @@ body.row-resizing { cursor: row-resize; user-select: none; }
 .rail-row[data-kind="say"] .rail-tag { background: var(--accent); color: var(--paper); }
 
 /* Fullscreen overlay — anchored to the rail's own corner and scaled up from it. */
+/* The terminal takes the window below the header, so the header's own
+   controls (fullscreen writer, chat, mode) stay reachable while it is open. */
 #rail-modal {
-  position: fixed; left: 12px; bottom: 12px; z-index: 300;
-  width: min(60vw, 680px); height: min(68vh, 560px); display: flex; flex-direction: column;
+  position: fixed; left: 12px; right: 12px; bottom: 12px; top: 60px; z-index: 300;
+  display: flex; flex-direction: column;
   background: var(--paper); border: 1px solid var(--hair); border-radius: 10px;
   box-shadow: 0 20px 60px -18px var(--shadow);
   transform: scale(.05); transform-origin: bottom left; opacity: 0;
@@ -111,6 +113,9 @@ body.row-resizing { cursor: row-resize; user-select: none; }
   line-height: 1; cursor: pointer; padding: .1rem .4rem;
 }
 #rail-modal-slot { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+#rail-term { flex: 1; min-height: 0; width: 100%; border: 0; border-radius: 0 0 10px 10px; background: #000; }
+.rail-term-note { margin-left: .8rem; text-transform: none; letter-spacing: 0; color: var(--ink-soft); font-size: .75rem; }
+@media (max-width: 640px) { .rail-term-note { display: none; } }
 /* Inside the overlay the feed fills the panel instead of the rail's saved height. */
 #rail-modal-slot .rail-feed {
   display: block; height: auto; flex: 1; min-height: 0;

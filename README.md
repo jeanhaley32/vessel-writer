@@ -58,6 +58,13 @@ optional and off unless configured.
   the tools it calls and what it says, read from a Claude Code session
   transcript on the same machine. Tool *results* are never sent to the browser,
   and anything secret-shaped is redacted. Off unless `ACTIVITY_ENABLED=1`.
+- **Live terminal.** Enlarging the activity rail opens a terminal on the
+  assistant's tmux session, served by [ttyd](https://github.com/tsl0922/ttyd)
+  at `term/` behind the writer's login (the reverse proxy asks
+  `GET /api/auth/check`). The owner can talk to the session directly, run its
+  slash commands and answer its permission prompts. Unlike the rail, it shows
+  everything a command prints, so it exists only while open. Example ttyd
+  invocation: `ttyd -i lo -p 8793 -W -O -b /writer/term tmux attach -t relay`.
 - **writer-mcp.** A stdio MCP server, so an agent can read documents and work
   with comments through tools instead of hand-written HTTP calls. See below.
 

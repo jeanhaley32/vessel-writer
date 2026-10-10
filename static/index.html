@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>vessel-writer</title>
-<link rel="stylesheet" href="static/style.css">
-<link rel="stylesheet" href="static/panel.css?v=aut1">
-<link rel="stylesheet" href="static/rail.css">
-<link rel="stylesheet" href="static/comments.css?v=aut1">
-<link rel="stylesheet" href="static/layout.css?v=aut1">
-<link rel="stylesheet" href="static/listening.css?v=aut1">
+<link rel="stylesheet" href="static/style.css?v=trm1">
+<link rel="stylesheet" href="static/panel.css?v=trm1">
+<link rel="stylesheet" href="static/rail.css?v=trm1">
+<link rel="stylesheet" href="static/comments.css?v=trm1">
+<link rel="stylesheet" href="static/layout.css?v=trm1">
+<link rel="stylesheet" href="static/listening.css?v=trm1">
 </head>
 <body>
   <aside id="sidebar">
@@ -29,7 +29,7 @@
         <span class="rail-label">Activity</span>
         <span class="rail-controls">
           <span id="rail-status">live</span>
-          <button type="button" data-rail-action="full" title="Fullscreen">&#9974;</button>
+          <button type="button" data-rail-action="full" title="Open the live terminal">&#9974;</button>
         </span>
       </div>
       <div id="rail-live" aria-live="polite"></div>
@@ -38,7 +38,7 @@
   </aside>
 
   <div id="rail-modal">
-    <div class="rail-modal-head"><span>Rodin &middot; activity</span><button id="rail-close" title="Collapse">&times;</button></div>
+    <div class="rail-modal-head"><span>Rodin &middot; live terminal <span class="rail-term-note">typing goes straight into the session</span></span><button id="rail-close" title="Close the terminal">&times;</button></div>
     <div id="rail-modal-slot"></div>
   </div>
 
@@ -119,9 +119,9 @@
 
   <script src="static/vendor/marked/marked.min.js"></script>
   <script src="static/vendor/mermaid/mermaid.min.js"></script>
-  <script type="module" src="static/app.js?v=aut1"></script>
-  <script src="static/panel.js?v=aut1"></script>
-  <script src="static/rail.js?v=aut1"></script>
-  <script src="static/listening.js?v=aut1"></script>
+  <script type="module" src="static/app.js?v=trm1"></script>
+  <script src="static/panel.js?v=trm1"></script>
+  <script src="static/rail.js?v=trm1"></script>
+  <script src="static/listening.js?v=trm1"></script>
 </body>
 </html>

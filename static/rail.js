@@ -1,9 +1,13 @@
 // The activity rail — what Rodin is doing, pinned at the sidebar's bottom.
 //
-// One source feeds it: the structured event stream at api/activity/stream,
-// which never carries tool results. There is deliberately no raw terminal
-// view in the writer; the terminal lives at `tmux attach` or ttyd, where
-// command output stays off a browser page's history, cache and screenshots.
+// One source feeds the rail: the structured event stream at
+// api/activity/stream, which never carries tool results.
+//
+// Enlarging it opens something else on purpose: a live terminal on Rodin's
+// tmux session (ttyd, served at term/ behind the writer's login), where the
+// owner can talk to Rodin directly, run slash commands and answer prompts.
+// That terminal shows everything a command prints, so it exists only while it
+// is open: closing it removes the frame and detaches the client.
 //
 // Nothing here may interfere with writing: every entry point is wrapped, and a
 // rail that fails to start leaves the editor untouched.
@@ -20,6 +24,7 @@
   var OPEN_KEY = "vw_rail_open";
   var HEIGHT_KEY = "vw_rail_h";
   var HEIGHT_VAR = "--rail-h";
+  var TERMINAL_URL = "term/";
 
   function id(name) { return document.getElementById(name); }
 
@@ -68,18 +73,25 @@
     stick();
   }
 
-  // The expanded body moves into the modal rather than being mirrored, so there
-  // is only ever one feed holding one set of rows.
   function setFull(next) {
     if (!modal || !modalSlot) return;
     if (next) {
-      modalSlot.appendChild(feed);
+      if (!modalSlot.querySelector("#rail-term")) {
+        var frame = document.createElement("iframe");
+        frame.id = "rail-term";
+        frame.title = "Rodin's terminal";
+        frame.src = TERMINAL_URL;
+        modalSlot.appendChild(frame);
+      }
       modal.classList.add("open");
+      var term = modalSlot.querySelector("#rail-term");
+      setTimeout(function () { try { term.focus(); } catch (e) { /* not ready */ } }, 200);
     } else {
-      box.appendChild(feed);
       modal.classList.remove("open");
+      var existing = modalSlot.querySelector("#rail-term");
+      // Removing the frame closes its socket, so no client stays attached.
+      if (existing) existing.remove();
     }
-    stick();
   }
 
   // --- rendering ---
@@ -224,6 +236,8 @@
     var closeBtn = id("rail-close");
     if (closeBtn) closeBtn.addEventListener("click", function () { setFull(false); });
 
+    // Escape typed inside the terminal stays there (it means something to the
+    // session); this only fires with focus outside the frame.
     // Not while the writer is fullscreen: the overlay is off screen under it,
     // and that Escape belongs to leaving fullscreen, after which it returns.
     document.addEventListener("keydown", function (e) {

@@ -4,9 +4,9 @@ import {
   indentWithTab, markdown, syntaxHighlighting, defaultHighlightStyle, yCollab,
   Awareness, encodeAwarenessUpdate, applyAwarenessUpdate,
 } from "./vendor/editor/vessel-editor.bundle.mjs";
-import { commentExtensions, commentsAttach, commentsDetach } from "./comments.js?v=aut1";
-import { imageExtensions } from "./images.js?v=aut1";
-import { authorshipExtension } from "./authorship.js?v=aut1";
+import { commentExtensions, commentsAttach, commentsDetach } from "./comments.js?v=trm1";
+import { imageExtensions } from "./images.js?v=trm1";
+import { authorshipExtension } from "./authorship.js?v=trm1";
 
 const $ = (s) => document.querySelector(s);
 const editor = $("#editor"), pathInput = $("#path"), statusEl = $("#status"), treeEl = $("#tree"), toastEl = $("#toast");

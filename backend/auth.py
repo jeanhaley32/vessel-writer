@@ -118,6 +118,13 @@ class LoginBody(BaseModel):
     token: str
 
 
+@router.get("/api/auth/check")
+def auth_check():
+    """For the reverse proxy's auth_request: 204 when the caller is signed in.
+    The middleware has already refused anyone who is not, with a 401."""
+    return Response(status_code=204)
+
+
 @router.post("/api/login")
 async def login(body: LoginBody, request: Request):
     tok = token()
