@@ -207,7 +207,8 @@ def _section(path: str, before: str, after: str) -> str | None:
 
 
 def _message(sections: list[str]) -> str:
-    head = (f"{siteconfig.OWNER_NAME} is writing in the vessel-writer with active listening on. "
+    owner = "The owner" if siteconfig.OWNER_NAME == "You" else siteconfig.OWNER_NAME
+    head = (f"{owner} is writing in the vessel-writer with active listening on. "
             "This is what changed since the last time you saw the document. "
             "Reply in the writer chat only if you have something useful to say "
             "about the writing; saying nothing is a fine answer.")
