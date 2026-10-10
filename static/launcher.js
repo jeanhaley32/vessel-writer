@@ -31,7 +31,7 @@ function card(item) {
 async function load() {
   let items = [];
   try {
-    const r = await fetch("/api/resources");
+    const r = await fetch("api/resources");
     items = (await r.json()).resources || [];
   } catch (e) {
     console.error("resource list unavailable", e);

@@ -1,0 +1,23 @@
+# systemd user unit: ~/.config/systemd/user/vessel-writer.service
+# then: systemctl --user daemon-reload && systemctl --user enable --now vessel-writer
+[Unit]
+Description=vessel-writer
+After=network.target
+
+[Service]
+WorkingDirectory=%h/vessel-writer
+# Everything below is optional; without it, data lives in ./data.
+Environment=WRITER_ROOT=%h/writing
+Environment=WRITER_STATE_DIR=%h/vessel-writer/state
+Environment=WRITER_OWNER_NAME=You
+Environment=WRITER_ASSISTANT_NAME=Assistant
+# Uncomment if you run a chat relay behind the same proxy (SSE <base>/stream, POST <base>/send):
+#Environment=WRITER_RELAY_CHAT=/relaychat
+# Keep secrets (INGEST_PG_DSN, WRITER_TOKEN) in a file outside the repository:
+#EnvironmentFile=%h/vessel-writer/writer.env
+ExecStart=%h/vessel-writer/run.sh
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target

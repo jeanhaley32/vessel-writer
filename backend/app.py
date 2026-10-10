@@ -4,7 +4,7 @@ A tiny FastAPI app: serves the distraction-free editor SPA and a small JSON API
 over the virtual filesystem / blob store. Deliberately a thin core so features
 bolt on as extensions (see extensions/) without touching this file.
 
-Run:  WRITER_ROOT=~/vessel-log/writing uvicorn app:app --host 127.0.0.1 --port 8791
+Run:  ./run.sh   (configuration: siteconfig.py and the README)
 """
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ import asyncio
 import base64
 import datetime
 import difflib
+import html
 import json
 import logging
 import os
@@ -19,19 +20,20 @@ import secrets
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.routing import Match
 from pydantic import BaseModel
 from pycrdt import Doc, Text
 
 import auth
+import siteconfig
 from vfs import VFS, norm as _norm
 from extensions import registry
 from extensions import ingestion
 
 log = logging.getLogger("vessel-writer")
-ROOT = Path(os.path.expanduser(os.environ.get("WRITER_ROOT", "~/vessel-log/writing")))
+ROOT = siteconfig.WRITER_ROOT
 STATIC = Path(__file__).resolve().parent.parent / "static"
 
 auth.check_bind(os.environ.get("WRITER_HOST", "127.0.0.1"))
@@ -379,7 +381,7 @@ def _apply_splices(session: dict, splices: list[tuple[int, int, str]]) -> None:
 # Rodin has no editor tab, so it publishes its own presence: a named cursor at
 # the end of its latest edit, withdrawn a few seconds later. The wire format is
 # y-protocols awareness: count, then per client (id, clock, JSON state).
-RODIN_USER = {"name": "Rodin", "color": "#b8561f", "colorLight": "#b8561f33"}
+RODIN_USER = {"name": siteconfig.ASSISTANT_NAME, "color": "#b8561f", "colorLight": "#b8561f33"}
 CURSOR_LINGER_S = 6.0
 
 
@@ -510,7 +512,7 @@ async def ysync(path: str, request: Request, v: int = 1):
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-_CLIENTLOG = Path(os.path.expanduser(os.environ.get("WRITER_CLIENTLOG", "~/vessel-writer/client.log")))
+_CLIENTLOG = siteconfig.CLIENTLOG
 _CLIENTLOG_MAX_BYTES = 2 * 1024 * 1024
 
 
@@ -550,7 +552,12 @@ async def clientlog(body: ClientLogBody):
 
 @app.get("/")
 def index():
-    return FileResponse(STATIC / "index.html")
+    """The app page, with this installation's names and relay filled in."""
+    config = json.dumps(siteconfig.browser_config()).replace("</", "<\\/")
+    page = (STATIC / "index.html").read_text()
+    page = page.replace("{{assistant}}", html.escape(siteconfig.ASSISTANT_NAME))
+    page = page.replace("/*{{config}}*/null", config)
+    return HTMLResponse(page)
 
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")

@@ -1,0 +1,29 @@
+# Serve the writer under /writer/ on a private network. Set a token first
+# (WRITER_TOKEN or the token file): the writer has no other gate.
+location /writer/ {
+    client_max_body_size 14m;           # pasted screenshots
+    proxy_pass http://127.0.0.1:8791/;
+    proxy_set_header Host $host;
+    proxy_http_version 1.1;
+    proxy_buffering off;                # live sync and the activity rail are SSE
+    proxy_read_timeout 1d;
+}
+
+# Optional: the live terminal behind the writer's login (ttyd on loopback, e.g.
+#   ttyd -i lo -p 8793 -W -O -b /writer/term tmux attach -t <session>)
+location /writer/term/ {
+    auth_request /writer-authcheck;
+    proxy_pass http://127.0.0.1:8793;
+    proxy_set_header Host $host;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 1d;
+}
+location = /writer-authcheck {
+    internal;
+    proxy_pass http://127.0.0.1:8791/api/auth/check;
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+    proxy_set_header Cookie $http_cookie;
+}

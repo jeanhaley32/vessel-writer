@@ -30,6 +30,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 import auth
+import siteconfig
 
 from . import registry, statefile
 
@@ -196,22 +197,31 @@ def _reply_instructions(path: str, comment: dict) -> list[str]:
             f'curl -s -X POST {REPLY_URL} -H "Content-Type: application/json"{bearer} -d {shlex.quote(payload)}']
 
 
+# The author field keeps the values "jean" and "rodin" as stable role ids (the
+# owner and the assistant); what they are called comes from the installation.
+OWNER, ASSISTANT = siteconfig.OWNER_NAME, siteconfig.ASSISTANT_NAME
+
+
+def _name(author: str) -> str:
+    return OWNER if author == "jean" else ASSISTANT
+
+
 def _quoted_span(comment: dict) -> list[str]:
     return [f'The text the comment is on: "{comment["quote"][:300]}"'] if comment.get("quote") else []
 
 
 def _thread_message(path: str, comment: dict, reply: dict) -> str:
-    lines = [f'Jean replied in the comment thread on "{path}".', "", *_quoted_span(comment)]
-    lines.append(f'{"Jean" if comment["author"] == "jean" else "Rodin"}: {comment["text"]}')
+    lines = [f'{OWNER} replied in the comment thread on "{path}".', "", *_quoted_span(comment)]
+    lines.append(f'{_name(comment["author"])}: {comment["text"]}')
     for earlier in comment.get("replies", [])[:-1]:
-        lines.append(f'{"Jean" if earlier["author"] == "jean" else "Rodin"}: {earlier["text"]}')
-    lines.append(f'Jean: {reply["text"]}')
+        lines.append(f'{_name(earlier["author"])}: {earlier["text"]}')
+    lines.append(f'{OWNER}: {reply["text"]}')
     return "\n".join(lines + _reply_instructions(path, comment))
 
 
 def _comment_message(path: str, comment: dict) -> str:
-    lines = [f'Jean left an inline comment on "{path}".', "", *_quoted_span(comment),
-             f'Jean: {comment["text"]}']
+    lines = [f'{OWNER} left an inline comment on "{path}".', "", *_quoted_span(comment),
+             f'{OWNER}: {comment["text"]}']
     return "\n".join(lines + _reply_instructions(path, comment))
 
 

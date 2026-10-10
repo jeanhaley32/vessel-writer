@@ -4,9 +4,9 @@ import {
   indentWithTab, markdown, syntaxHighlighting, defaultHighlightStyle, yCollab,
   Awareness, encodeAwarenessUpdate, applyAwarenessUpdate,
 } from "./vendor/editor/vessel-editor.bundle.mjs";
-import { commentExtensions, commentsAttach, commentsDetach } from "./comments.js?v=trm1";
-import { imageExtensions } from "./images.js?v=trm1";
-import { authorshipExtension } from "./authorship.js?v=trm1";
+import { commentExtensions, commentsAttach, commentsDetach } from "./comments.js?v=adp1";
+import { imageExtensions } from "./images.js?v=adp1";
+import { authorshipExtension } from "./authorship.js?v=adp1";
 
 const $ = (s) => document.querySelector(s);
 const editor = $("#editor"), pathInput = $("#path"), statusEl = $("#status"), treeEl = $("#tree"), toastEl = $("#toast");
@@ -376,7 +376,7 @@ async function buildEditor(path, content, yseed, session, writer) {
   ydoc = new Y.Doc();
   ytext = ydoc.getText("content");
   awareness = new Awareness(ydoc);
-  awareness.setLocalStateField("user", { name: "Jean", color: myColor, colorLight: myColor + "33" });
+  awareness.setLocalStateField("user", { name: (window.vesselConfig || {}).owner || "You", color: myColor, colorLight: myColor + "33" });
 
   // Seed every client deterministically from the blob (idempotent, shared IDs) —
   // origin "seed" so it is NOT re-posted to peers (each client seeds itself; the

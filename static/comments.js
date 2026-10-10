@@ -10,7 +10,7 @@
 //     the editor's flow;
 //   - every dispatch carries effects only and never a selection;
 //   - a comment that arrives mid-keystroke waits in a queue until typing pauses.
-import { openComposer } from "./compose.js?v=trm1";
+import { openComposer } from "./compose.js?v=adp1";
 import { Decoration, StateEffect, StateField, EditorView }
   from "./vendor/editor/vessel-editor.bundle.mjs";
 
@@ -315,7 +315,7 @@ function renderThread() {
     el.className = "vw-thread-msg vw-from-" + author;
     const who = document.createElement("div");
     who.className = "vw-thread-who";
-    who.textContent = author === "jean" ? "You" : "Rodin";
+    who.textContent = author === "jean" ? "You" : ((window.vesselConfig || {}).assistant || "Assistant");
     const body = document.createElement("div");
     body.className = "vw-thread-text";
     body.textContent = text;

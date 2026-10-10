@@ -17,10 +17,11 @@ import logging
 import os
 from pathlib import Path
 
+import siteconfig
+
 log = logging.getLogger("vessel-writer.statefile")
 
-STATE_DIR = Path(os.path.expanduser(
-    os.environ.get("WRITER_STATE_DIR", "~/vessel-writer/state")))
+STATE_DIR = siteconfig.STATE_DIR
 
 
 def load(name: str, default):

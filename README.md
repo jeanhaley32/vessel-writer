@@ -116,10 +116,11 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ./run.sh            # http://127.0.0.1:8791
 ```
 
-Documents live in `$WRITER_ROOT` (default `~/vessel-log/writing`). To reach it
-from other devices, put it behind a reverse proxy you control and **set a
-token first** (see below). It was built to sit behind a Tailscale-only nginx;
-any private network works the same way.
+Everything lives under `./data` unless you say otherwise. To reach it from
+other devices, put it behind a reverse proxy you control and **set a token
+first** (see below). It was built to sit behind a Tailscale-only nginx; any
+private network works the same way. `deploy/` has an example systemd unit and
+nginx block.
 
 ## Authentication
 
@@ -145,18 +146,24 @@ loopback-only install behaves as before.
 
 | Variable | Default | What it does |
 |---|---|---|
-| `WRITER_ROOT` | `~/vessel-log/writing` | documents, blobs, index |
-| `WRITER_STATE_DIR` | `~/vessel-writer/state` | comments, listening mode, uploads, the launcher list |
+| `WRITER_ROOT` | `./data/writing` | documents, blobs, index |
+| `WRITER_STATE_DIR` | `./data/state` | comments, listening mode, uploads, the token file, the launcher list |
 | `WRITER_HOST` / `WRITER_PORT` | `127.0.0.1` / `8791` | bind address (`run.sh`) |
 | `WRITER_TOKEN` / `WRITER_TOKEN_FILE` | unset / `<state>/token` | owner token; auth is off without one |
-| `WRITER_CLIENTLOG` | `~/vessel-writer/client.log` | browser errors, capped at 2 MB |
+| `WRITER_OWNER_NAME` / `WRITER_ASSISTANT_NAME` | `You` / `Assistant` | what the page and the assistant's messages call each of you |
+| `WRITER_RELAY_CHAT` | unset | base URL of a chat relay (`<base>/stream` SSE, `<base>/send` POST); unset hides the chat pane and active listening |
+| `WRITER_CLIENTLOG` | `./data/client.log` | browser errors, capped at 2 MB |
 | `INGEST_PG_DSN` | unset | enables recall ingestion |
 | `INGEST_QDRANT_URL`, `INGEST_OLLAMA_URL`, `INGEST_COLLECTION`, `INGEST_EMBED_MODEL` | loopback defaults, `vessel_writing`, `nomic-embed-text` | recall backends |
 | `LISTEN_INJECT_URL`, `LISTEN_CONV_ID` | relay loopback webhook | where listening diffs and comment replies are sent |
 | `LISTEN_SETTLE_S`, `LISTEN_MIN_INTERVAL_S`, `LISTEN_DIFF_CAP` | `3`, `10`, `6000` | listening cadence |
 | `ACTIVITY_ENABLED` | off | `1` turns on the activity rail |
 | `ACTIVITY_PROJECT_DIR` | derived from `~/agent-relay` | the Claude Code project whose transcript the rail reads |
+| `ACTIVITY_REDACT_EXTRA` | unset | one extra regex the rail redacts (a key file's name, say) |
 | `RESOURCES_FILE` | `<state>/resources.json`, else the starter list | the launcher page's list |
+
+The comment API's `author` field takes `jean` or `rodin`: stable role ids for
+the owner and the assistant, whatever they are called.
 
 Keep secrets such as the Postgres DSN in an environment file outside the
 repository. The systemd unit used here loads `ingestion.env`, which is

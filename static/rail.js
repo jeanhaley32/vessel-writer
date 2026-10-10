@@ -79,7 +79,7 @@
       if (!modalSlot.querySelector("#rail-term")) {
         var frame = document.createElement("iframe");
         frame.id = "rail-term";
-        frame.title = "Rodin's terminal";
+        frame.title = ((window.vesselConfig || {}).assistant || "Assistant") + "'s terminal";
         frame.src = TERMINAL_URL;
         modalSlot.appendChild(frame);
       }

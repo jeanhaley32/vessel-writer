@@ -29,11 +29,13 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel
 
+import siteconfig
+
 COOKIE = "vw_session"
 COOKIE_MAX_AGE_S = 90 * 86400
 LINK_TTL_S = 300
 FAILED_LOGIN_DELAY_S = 0.5
-TOKEN_FILE = Path(os.path.expanduser(os.environ.get("WRITER_TOKEN_FILE", "~/vessel-writer/state/token")))
+TOKEN_FILE = Path(os.path.expanduser(os.environ.get("WRITER_TOKEN_FILE") or str(siteconfig.STATE_DIR / "token")))
 
 # Reachable without a session: the login itself, and the pages that show the
 # login form in place of the app.

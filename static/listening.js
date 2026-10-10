@@ -6,8 +6,12 @@
 // Exposes window.vesselListening = { state, refresh, set }.
 (() => {
   const POLL_MS = 15000;
+  const CONFIG = window.vesselConfig || { assistant: "Assistant", relay: "" };
+  const AI = CONFIG.assistant;
   const slot = document.getElementById("listen-slot");
-  if (!slot) return;
+  // Listening hands diffs to the assistant through the relay; with none, there
+  // is nobody to listen.
+  if (!slot || !CONFIG.relay) return;
 
   const btn = document.createElement("button");
   btn.id = "listen-toggle";
@@ -64,9 +68,9 @@
     const queued = on && state.pending > 0;
     busy.dataset.state = reading ? "reading" : queued ? "queued" : "idle";
     busy.hidden = !reading && !queued;
-    busyLabel.textContent = reading ? "Rodin is reading" : queued ? "queued" : "";
-    busy.title = reading ? "Your latest edits reached Rodin. This clears when he finishes, reply or not."
-      : queued ? "Waiting for you to pause before sending your edits to Rodin." : "";
+    busyLabel.textContent = reading ? `${AI} is reading` : queued ? "queued" : "";
+    busy.title = reading ? `Your latest edits reached ${AI}. This clears when the turn ends, reply or not.`
+      : queued ? `Waiting for you to pause before sending your edits to ${AI}.` : "";
   }
 
   let state = null;   // the last server answer, or null while unknown
@@ -78,7 +82,7 @@
       btn.removeAttribute("data-error");
       btn.setAttribute("aria-pressed", "mixed");
       label.textContent = "Listening?";
-      btn.title = "Could not reach the writer to ask whether Rodin is listening.";
+      btn.title = `Could not reach the writer to ask whether ${AI} is listening.`;
       return;
     }
     const on = !!next.listening;
@@ -87,9 +91,9 @@
     if (on && next.last_error) btn.dataset.error = next.last_error; else btn.removeAttribute("data-error");
     label.textContent = on ? "Listening" : "Solitude";
     btn.title = on
-      ? `Rodin is listening: saves go to him as diffs (${next.sent} sent` +
+      ? `${AI} is listening: saves go as diffs (${next.sent} sent` +
         (next.last_error ? `, last: ${next.last_error}` : "") + "). Click for solitude."
-      : "Solitude: Rodin sees nothing you write. Click to let him listen.";
+      : `Solitude: ${AI} sees nothing you write. Click to let it listen.`;
   }
 
   async function ask(method, body) {

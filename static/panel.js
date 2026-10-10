@@ -2,7 +2,12 @@
 // the tailnet (/relaychat SSE + POST). Portable: no dependencies, no build.
 // Exposes window.vesselChat = { toggle, send(text, quote), open, minimize }.
 (() => {
-  const STREAM = "/relaychat/stream", SEND = "/relaychat/send";
+  const CONFIG = window.vesselConfig || { owner: "You", assistant: "Assistant", relay: "" };
+  const AI = CONFIG.assistant;
+  // No relay configured: the chat pane, its button and "Ask" stay hidden, and
+  // nothing connects. Comments on a selection still work.
+  const HAS_RELAY = !!CONFIG.relay;
+  const STREAM = CONFIG.relay + "/stream", SEND = CONFIG.relay + "/send";
   const LS = { pos: "vw_chat_pos", open: "vw_chat_open", min: "vw_chat_min", size: "vw_chat_size", hist: "vw_chat_hist", pillpos: "vw_chat_pillpos", dock: "vw_chat_dock", dockw: "vw_chat_dockw", full: "vw_chat_full", chatfs: "vw_chat_fs", bubblepos: "vw_chat_bubblepos", baropen: "vw_chat_baropen", splith: "vw_chat_splith" };
   const HIST_CAP = 200;
   const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
@@ -15,7 +20,7 @@
     <div class="chat-split-grip" title="Drag to resize"></div>
     <div class="chat-head">
       <span class="chat-dot"></span>
-      <span class="chat-title">Rodin</span>
+      <span class="chat-title">${esc(AI)}</span>
       <button class="mode-toggle chat-to-write" data-mode="chat" title="Chat mode. Click for Write mode">Chat</button>
       <button class="fs-step chat-fs-dec" title="Smaller text">A&minus;</button>
       <button class="fs-step chat-fs-inc" title="Larger text">A+</button>
@@ -27,24 +32,34 @@
     <div class="chat-body"></div>
     <div class="chat-input">
       <div class="chat-attach" hidden></div>
-      <textarea placeholder="Message Rodin…" rows="1"></textarea>
+      <textarea placeholder="Message ${esc(AI)}…" rows="1"></textarea>
       <button class="chat-send">Send</button>
     </div>`;
   const bubble = el("div", { id: "chat-bubble", hidden: true });
   bubble.innerHTML = `
-    <div class="bubble-head"><span class="bubble-who">Rodin</span><button class="bubble-x" title="Dismiss">&times;</button></div>
+    <div class="bubble-head"><span class="bubble-who">${esc(AI)}</span><button class="bubble-x" title="Dismiss">&times;</button></div>
     <div class="bubble-text"></div>
     <div class="bubble-actions"><button class="bubble-open">Open chat</button></div>`;
   const ctx = el("div", { id: "chat-ctx", hidden: true });
-  ctx.innerHTML = `<button>Ask Rodin about this</button><button class="ctx-comment">Comment on this</button>`;
+  ctx.innerHTML = (HAS_RELAY ? `<button class="ctx-ask">Ask ${esc(AI)} about this</button>` : "") + `<button class="ctx-comment">Comment on this</button>`;
   const pill = el("div", { id: "chat-pill", hidden: true, role: "button", tabindex: "0", title: "Open chat (⌘J)" });
-  pill.innerHTML = `<span class="pill-dot"></span><span class="pill-label">Rodin</span>`;
+  pill.innerHTML = `<span class="pill-dot"></span><span class="pill-label">${esc(AI)}</span>`;
   document.addEventListener("DOMContentLoaded", mount);
   if (document.readyState !== "loading") mount();
   function mount() {
-    if (panel.isConnected) return;
+    if (ctx.isConnected) return;
+    if (!HAS_RELAY) {
+      document.body.append(ctx);
+      wireContextMenu();
+      for (const id of ["#chat-btn", "#mode-switch", "#listen-slot"]) {
+        const node = document.querySelector(id);
+        if (node) node.hidden = true;
+      }
+      return;
+    }
     document.body.append(panel, bubble, ctx, pill);
     wire();
+    wireContextMenu();
     restoreHistory();
     restorePosition();
     restorePillPosition();
@@ -167,7 +182,7 @@
   }
 
   async function attachFiles(files) {
-    const { imageFiles, uploadImage } = await import("./images.js?v=trm1");
+    const { imageFiles, uploadImage } = await import("./images.js?v=adp1");
     for (const file of imageFiles(files)) {
       try { attached.push(await uploadImage(file)); renderAttached(); }
       catch (e) { appendMsg("rodin", "⚠️ " + e.message); }
@@ -585,6 +600,20 @@
       if (pillMoved) save(LS.pillpos, { x: parseInt(pill.style.left, 10), y: parseInt(pill.style.top, 10) });
     });
 
+    // A fold or unfold is a resize. Everything placed from saved pixels is
+    // re-clamped to the new viewport; nothing is saved, so the old viewport's
+    // choice comes back with it.
+    window.addEventListener("resize", () => {
+      if (isFloating()) restorePosition();
+      restorePillPosition();
+      if (document.body.classList.contains("chat-docked")) applyDockWidth();
+      if (!bubble.hidden) positionBubble();
+    });
+  }
+
+  // Right-click a selection in the editor: ask about it (with a relay) or
+  // comment on it (always).
+  function wireContextMenu() {
     // right-click a selection in the editor → ask about it
     const editor = document.querySelector("#editor");
     if (editor) {
@@ -600,7 +629,8 @@
         ctx.hidden = false;
       });
     }
-    ctx.querySelector("button").onclick = () => {
+    const ask = ctx.querySelector(".ctx-ask");
+    if (ask) ask.onclick = () => {
       const sel = ctx.dataset.sel || "";
       ctx.hidden = true;
       send("What do you make of this?", sel);   // reply arrives via SSE; bubbles if pane hidden/min
@@ -612,15 +642,6 @@
     };
     document.addEventListener("click", (e) => { if (!ctx.contains(e.target)) ctx.hidden = true; });
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") ctx.hidden = true; });
-    // A fold or unfold is a resize. Everything placed from saved pixels is
-    // re-clamped to the new viewport; nothing is saved, so the old viewport's
-    // choice comes back with it.
-    window.addEventListener("resize", () => {
-      if (isFloating()) restorePosition();
-      restorePillPosition();
-      if (document.body.classList.contains("chat-docked")) applyDockWidth();
-      if (!bubble.hidden) positionBubble();
-    });
   }
 
   // a drag ends on release, or when the browser takes the pointer away (a
@@ -631,18 +652,21 @@
   }
 
   function showBubblePending() {
-    bubble.querySelector(".bubble-text").textContent = "Sent to Rodin — waiting for a reply…";
+    bubble.querySelector(".bubble-text").textContent = `Sent to ${AI}, waiting for a reply…`;
     positionBubble(); bubble.hidden = false;
   }
 
   // helpers
+  function esc(text) { return String(text).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`); }
   function el(tag, attrs) { const n = document.createElement(tag); for (const k in attrs) k === "hidden" ? (n.hidden = attrs[k]) : n.setAttribute(k, attrs[k]); return n; }
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
   // ⌘J / Ctrl-J toggles the chat pane from anywhere
   document.addEventListener("keydown", (e) => {
-    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === "KeyJ") { e.preventDefault(); toggle(); }
+    if (HAS_RELAY && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === "KeyJ") { e.preventDefault(); toggle(); }
   });
 
-  window.vesselChat = { toggle, send, open: showPanel, minimize: minimizePanel, setMode };
+  window.vesselChat = HAS_RELAY
+    ? { toggle, send, open: showPanel, minimize: minimizePanel, setMode }
+    : { toggle() {}, send() {}, open() {}, minimize() {}, setMode() {} };
 })();

@@ -18,7 +18,7 @@ let lastSpans = [];   // the text of each tinted span, for the console/test seam
 const setAuthorship = StateEffect.define();
 const assistantMark = Decoration.mark({
   class: "cm-by-assistant",
-  attributes: { title: "Written by Rodin" },
+  attributes: { title: "Written by " + ((window.vesselConfig || {}).assistant || "the assistant") },
 });
 
 // Walk the Y.Text item list and collect the live spans one client created.

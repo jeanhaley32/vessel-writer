@@ -42,6 +42,8 @@ import urllib.request
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+import siteconfig
+
 from . import registry, statefile
 
 log = logging.getLogger("vessel-writer.listening")
@@ -205,9 +207,9 @@ def _section(path: str, before: str, after: str) -> str | None:
 
 
 def _message(sections: list[str]) -> str:
-    head = ("Jean is writing in the vessel-writer with active listening on. "
+    head = (f"{siteconfig.OWNER_NAME} is writing in the vessel-writer with active listening on. "
             "This is what changed since the last time you saw the document. "
-            "Reply in his writer chat only if you have something useful to say "
+            "Reply in the writer chat only if you have something useful to say "
             "about the writing; saying nothing is a fine answer.")
     return head + "\n\n" + "\n\n".join(sections)
 

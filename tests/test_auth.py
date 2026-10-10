@@ -35,7 +35,7 @@ def free_port():
 
 
 class Server:
-    def __init__(self, token=None):
+    def __init__(self, token=None, env_extra=None):
         self.tmp = tempfile.mkdtemp()
         self.port = free_port()
         env = {k: v for k, v in os.environ.items() if not k.startswith(("INGEST_", "WRITER_"))}
@@ -44,6 +44,7 @@ class Server:
                    ACTIVITY_PROJECT_DIR=f"{self.tmp}/transcripts")
         if token:
             env["WRITER_TOKEN"] = token
+        env.update(env_extra or {})
         self.proc = subprocess.Popen(
             [sys.executable, "-m", "uvicorn", "app:app", "--app-dir", str(REPO / "backend"),
              "--host", "127.0.0.1", "--port", str(self.port)],

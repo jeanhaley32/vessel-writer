@@ -4,12 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>vessel-writer</title>
-<link rel="stylesheet" href="static/style.css?v=trm1">
-<link rel="stylesheet" href="static/panel.css?v=trm1">
-<link rel="stylesheet" href="static/rail.css?v=trm1">
-<link rel="stylesheet" href="static/comments.css?v=trm1">
-<link rel="stylesheet" href="static/layout.css?v=trm1">
-<link rel="stylesheet" href="static/listening.css?v=trm1">
+<script>window.vesselConfig = /*{{config}}*/null;</script>
+<link rel="stylesheet" href="static/style.css?v=adp1">
+<link rel="stylesheet" href="static/panel.css?v=adp1">
+<link rel="stylesheet" href="static/rail.css?v=adp1">
+<link rel="stylesheet" href="static/comments.css?v=adp1">
+<link rel="stylesheet" href="static/layout.css?v=adp1">
+<link rel="stylesheet" href="static/listening.css?v=adp1">
 </head>
 <body>
   <aside id="sidebar">
@@ -24,7 +25,7 @@
     <div id="rail" data-state="collapsed" data-conn="connecting">
       <div id="rail-grip" title="Drag to resize"></div>
       <div class="rail-head" role="button" tabindex="0" aria-expanded="false"
-           title="What Rodin is doing — click to expand">
+           title="What {{assistant}} is doing — click to expand">
         <span class="rail-dot"></span>
         <span class="rail-label">Activity</span>
         <span class="rail-controls">
@@ -38,7 +39,7 @@
   </aside>
 
   <div id="rail-modal">
-    <div class="rail-modal-head"><span>Rodin &middot; live terminal <span class="rail-term-note">typing goes straight into the session</span></span><button id="rail-close" title="Close the terminal">&times;</button></div>
+    <div class="rail-modal-head"><span>{{assistant}} &middot; live terminal <span class="rail-term-note">typing goes straight into the session</span></span><button id="rail-close" title="Close the terminal">&times;</button></div>
     <div id="rail-modal-slot"></div>
   </div>
 
@@ -54,7 +55,7 @@
       </div>
       <button id="comments-btn" type="button" hidden title="Comments on this document" aria-pressed="false">Comments <span class="count">0</span></button>
       <span id="listen-slot"></span>
-      <button id="chat-btn" title="Chat with Rodin (⌘J)">&#128172;</button>
+      <button id="chat-btn" title="Chat with {{assistant}} (⌘J)">&#128172;</button>
       <button class="fs-step fs-dec" id="editor-fs-dec" title="Smaller text">A&minus;</button>
       <button class="fs-step fs-inc" id="editor-fs-inc" title="Larger text">A+</button>
       <button id="appearance-btn" title="Appearance (theme &amp; typeface)" aria-haspopup="true" aria-expanded="false">Aa</button>
@@ -64,14 +65,14 @@
     <div id="help" hidden>
       <h3>Shortcuts</h3>
       <dl class="shortcuts">
-        <dt>Chat with Rodin</dt><dd><kbd>⌘</kbd><kbd>J</kbd></dd>
+        <dt>Chat with {{assistant}}</dt><dd><kbd>⌘</kbd><kbd>J</kbd></dd>
         <dt>Reading view ↔ edit</dt><dd><kbd>⌘</kbd><kbd>⇧</kbd><kbd>P</kbd></dd>
         <dt>New document</dt><dd><kbd>⌘</kbd><kbd>⌥</kbd><kbd>N</kbd></dd>
         <dt>Save now</dt><dd><kbd>⌘</kbd><kbd>S</kbd></dd>
         <dt>Zen mode</dt><dd><kbd>⌘</kbd><kbd>\</kbd></dd>
         <dt>Fullscreen writer (Esc leaves)</dt><dd><kbd>⌘</kbd><kbd>⌥</kbd><kbd>F</kbd></dd>
       </dl>
-      <p class="help-note">Tip: select text in your draft, right-click → “Ask Rodin about this.” On Windows/Linux use Ctrl in place of ⌘.</p>
+      <p class="help-note">Tip: select text in your draft, right-click → “Ask {{assistant}} about this.” On Windows/Linux use Ctrl in place of ⌘.</p>
     </div>
     <div id="history" hidden>
       <h3>Version history</h3>
@@ -119,9 +120,9 @@
 
   <script src="static/vendor/marked/marked.min.js"></script>
   <script src="static/vendor/mermaid/mermaid.min.js"></script>
-  <script type="module" src="static/app.js?v=trm1"></script>
-  <script src="static/panel.js?v=trm1"></script>
-  <script src="static/rail.js?v=trm1"></script>
-  <script src="static/listening.js?v=trm1"></script>
+  <script type="module" src="static/app.js?v=adp1"></script>
+  <script src="static/panel.js?v=adp1"></script>
+  <script src="static/rail.js?v=adp1"></script>
+  <script src="static/listening.js?v=adp1"></script>
 </body>
 </html>
