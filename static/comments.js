@@ -10,7 +10,7 @@
 //     the editor's flow;
 //   - every dispatch carries effects only and never a selection;
 //   - a comment that arrives mid-keystroke waits in a queue until typing pauses.
-import { openComposer } from "./compose.js?v=adp1";
+import { openComposer } from "./compose.js?v=cmt2";
 import { Decoration, StateEffect, StateField, EditorView }
   from "./vendor/editor/vessel-editor.bundle.mjs";
 
@@ -26,7 +26,8 @@ const markFor = (comment) => Decoration.mark({
   inclusive: false,
 });
 
-const anchored = (comment) => comment.to > comment.from;
+const anchored = (comment) => comment.to > comment.from && !comment.hidden;
+const REATTACH_WINDOW = 500;   // how far from where its text was a hidden comment looks for it
 
 function decorationsOf(items) {
   const ranges = items
@@ -34,6 +35,23 @@ function decorationsOf(items) {
     .sort((a, b) => a.from - b.from || a.to - b.to)
     .map((c) => markFor(c).range(c.from, c.to));
   return Decoration.set(ranges, true);
+}
+
+// A hidden comment's text was deleted. It looks for that text again near
+// where it was, so undoing the deletion (or retyping the words) brings the
+// mark back at once.
+function reattach(comment, doc) {
+  const want = comment.anchorText;
+  if (!want) return comment;
+  const lo = Math.max(0, comment.from - REATTACH_WINDOW - want.length);
+  const hi = Math.min(doc.length, comment.from + REATTACH_WINDOW + want.length);
+  const near = doc.sliceString(lo, hi);
+  let best = -1;
+  for (let i = near.indexOf(want); i >= 0; i = near.indexOf(want, i + 1)) {
+    if (best < 0 || Math.abs(lo + i - comment.from) < Math.abs(lo + best - comment.from)) best = i;
+  }
+  if (best < 0) return comment;
+  return { ...comment, from: lo + best, to: lo + best + want.length, hidden: false };
 }
 
 const commentField = StateField.define({
@@ -47,9 +65,12 @@ const commentField = StateField.define({
     }
     if (!tr.docChanged) return value;
     // Edits move the text a comment is attached to; the span moves with it.
-    const items = value.items
-      .map((c) => ({ ...c, from: tr.changes.mapPos(c.from, 1), to: tr.changes.mapPos(c.to, -1) }))
-      .filter(anchored);
+    // Deleting that text hides the comment instead of dropping it.
+    const items = value.items.map((c) => {
+      const moved = { ...c, from: tr.changes.mapPos(c.from, 1), to: tr.changes.mapPos(c.to, -1) };
+      if (c.hidden || moved.to <= moved.from) return reattach({ ...moved, to: moved.from, hidden: true }, tr.state.doc);
+      return moved;
+    });
     return { items, decorations: decorationsOf(items) };
   },
   provide: (field) => EditorView.decorations.from(field, (v) => v.decorations),
@@ -79,12 +100,12 @@ function anchor(view, comment) {
 function applyItems() {
   if (!active) return;
   const { view } = active;
-  // A comment is anchored by text search exactly once. After that the field
-  // owns its position, remapped through every edit, so a line inserted above
-  // or a word changed inside the quote moves the mark instead of re-searching
-  // the stale line number or losing the quote. A comment whose quote is not in
-  // the text, or whose span the field dropped (its text deleted), is never
-  // drawn and never re-searched: it stays listed as a document-level note.
+  // A comment is anchored by text search once, when it arrives. After that
+  // the field owns its position, remapped through every edit, and remembers
+  // the text it covered. If that text is deleted the comment is hidden, not
+  // lost, and comes back when the text does. A comment whose quote is not in
+  // the text when it arrives stays listed as a document-level note, unless it
+  // was already hidden in an earlier session: then it is archived (restorable).
   const live = new Map(view.state.field(commentField).items.map((c) => [c.id, c]));
   const resolved = [];
   const seen = new Set();
@@ -92,13 +113,49 @@ function applyItems() {
     if (seen.has(comment.id)) continue;
     seen.add(comment.id);
     if (live.has(comment.id)) { resolved.push(live.get(comment.id)); continue; }
-    if (comment.placed) { resolved.push(anchored(comment) ? { ...comment, from: 0, to: 0, detached: true } : comment); continue; }
+    if (comment.placed) { resolved.push(comment); continue; }
     const span = anchor(view, comment);
-    resolved.push({ ...comment, from: 0, to: 0, ...span, placed: true });
+    if (!span && comment.detached_at) { archiveLost(comment); continue; }
+    if (span && comment.detached_at) markDetached(comment.id, false);
+    const placed = { ...comment, from: 0, to: 0, ...span, placed: true, hidden: false };
+    placed.anchorText = span ? view.state.doc.sliceString(span.from, span.to) : "";
+    resolved.push(placed);
   }
   active.items = resolved;
   // Effects only, never a caret move: a comment cannot relocate the cursor.
-  view.dispatch({ effects: setComments.of(resolved.filter(anchored)) });
+  view.dispatch({ effects: setComments.of(resolved.filter((c) => c.placed && (c.hidden || c.to > c.from))) });
+  renderMeta();
+}
+
+const visibleItems = () => (active ? active.items.filter((c) => !c.hidden) : []);
+
+// Tell the server a comment's text is gone (or back), so the next session
+// knows to archive it if the text never returns.
+function markDetached(id, detached) {
+  if (!active) return;
+  post("api/comments/detach", { path: active.path, id, detached }).catch(() => {});
+}
+
+function archiveLost(comment) {
+  if (!active) return;
+  post("api/comments/resolve", { path: active.path, id: comment.id }).catch(() => {});
+}
+
+// Follow the field: when an edit hides or reveals a comment, update the list,
+// the count and the server, and close a thread whose text just vanished.
+function syncHidden(before, after) {
+  if (!active) return;
+  const was = new Map(before.map((c) => [c.id, !!c.hidden]));
+  let changed = false;
+  for (const c of after) {
+    if (!was.has(c.id) || was.get(c.id) === !!c.hidden) continue;
+    changed = true;
+    markDetached(c.id, !!c.hidden);
+    if (c.hidden && active.threadId === c.id) closeThread();
+  }
+  if (!changed) return;
+  const byId = new Map(after.map((c) => [c.id, c]));
+  active.items = active.items.map((c) => byId.get(c.id) || c);
   renderMeta();
 }
 
@@ -209,7 +266,7 @@ function showMeta() {
 function updateButton() {
   const btn = document.getElementById("comments-btn");
   if (!btn || !active) return;
-  const count = active.items.length;
+  const count = visibleItems().length;
   btn.hidden = count === 0;
   btn.querySelector(".count").textContent = String(count);
   btn.setAttribute("aria-pressed", String(!!active.pinned));
@@ -219,7 +276,7 @@ function renderMeta(reveal) {
   if (!active || !active.meta) return;
   updateButton();
   const { thinking, summary } = active.metaText;
-  const count = active.items.length;
+  const count = visibleItems().length;
   if (!thinking && !summary && !count) { active.meta.hidden = true; active.pinned = false; return; }
   // Rebuild only what is showing: a quiet change must not pop a faded panel back up.
   if (!reveal && active.meta.hidden && !active.pinned) return;
@@ -229,13 +286,13 @@ function renderMeta(reveal) {
   head.className = "vw-meta-head";
   head.textContent = count === 1 ? "1 comment" : count + " comments";
   active.meta.appendChild(head);
-  for (const comment of active.items) {
+  for (const comment of visibleItems()) {
     const el = document.createElement("button");
     el.type = "button";
     el.className = "vw-meta-item";
     el.dataset.comment = comment.id;
     const replies = (comment.replies || []).length;
-    el.textContent = (comment.detached ? "detached: " : "") + snippet(comment.text) + (replies ? "  · " + replies + (replies === 1 ? " reply" : " replies") : "");
+    el.textContent = snippet(comment.text) + (replies ? "  · " + replies + (replies === 1 ? " reply" : " replies") : "");
     el.onclick = () => openThread(comment.id, null, true);
     active.meta.appendChild(el);
   }
@@ -505,6 +562,7 @@ export function commentExtensions() {
     EditorView.updateListener.of((u) => {
       // Only Jean's own keystrokes hold a flush back. A peer's edit arriving
       // over yCollab is not him typing, and must not defer his comments.
+      if (u.docChanged) syncHidden(u.startState.field(commentField).items, u.state.field(commentField).items);
       const typing = u.transactions.some((tr) => tr.isUserEvent("input") || tr.isUserEvent("delete"));
       if (typing && active) { active.lastEdit = Date.now(); flushWhenIdle(); }
     }),

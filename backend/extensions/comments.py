@@ -172,6 +172,23 @@ async def resolve(body: dict):
     return {"ok": True, "removed": len(targets)}
 
 
+@router.post("/api/comments/detach")
+async def detach(body: dict):
+    """The text a comment is anchored to was deleted (detached: true) or came
+    back (false). The comment stays open either way; the flag only tells the
+    next session that a comment whose text is still gone should be archived."""
+    path = _clean_path(body.get("path"))
+    comment = _find(path, body.get("id"))
+    if comment is None or comment.get("archived"):
+        raise HTTPException(status_code=404, detail="no such open comment")
+    if body.get("detached"):
+        comment.setdefault("detached_at", time.time())
+    else:
+        comment.pop("detached_at", None)
+    _persist()
+    return {"ok": True}
+
+
 @router.post("/api/comments/restore")
 async def restore(body: dict):
     path = _clean_path(body.get("path"))

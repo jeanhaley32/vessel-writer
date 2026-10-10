@@ -182,7 +182,7 @@
   }
 
   async function attachFiles(files) {
-    const { imageFiles, uploadImage } = await import("./images.js?v=adp1");
+    const { imageFiles, uploadImage } = await import("./images.js?v=cmt2");
     for (const file of imageFiles(files)) {
       try { attached.push(await uploadImage(file)); renderAttached(); }
       catch (e) { appendMsg("rodin", "⚠️ " + e.message); }
