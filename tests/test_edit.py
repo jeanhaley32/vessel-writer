@@ -99,5 +99,73 @@ class EditTest(unittest.TestCase):
         self.assertEqual(self.text("live.md"), expected)
 
 
+
+class _Sink:
+    """A stand-in for the relay's inject webhook that records what listening sends."""
+
+    def __init__(self):
+        import http.server
+        import threading
+        received = self.received = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                received.append(json.loads(self.rfile.read(int(self.headers["content-length"])))["text"])
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, *_):
+                pass
+
+        self.http = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=self.http.serve_forever, daemon=True).start()
+        self.url = f"http://127.0.0.1:{self.http.server_port}/webhook/inject"
+
+    def wait(self, count, seconds=5):
+        import time
+        deadline = time.time() + seconds
+        while len(self.received) < count and time.time() < deadline:
+            time.sleep(0.05)
+        return self.received
+
+
+@unittest.skipIf(auth is None, "needs the app's dependencies (run with .venv/bin/python)")
+class AssistantWholeDocumentTest(unittest.TestCase):
+    """A whole-document write the assistant makes is its own, not the owner's."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.sink = _Sink()
+        cls.server = Server(env_extra={"LISTEN_INJECT_URL": cls.sink.url, "LISTEN_SETTLE_S": "0.3",
+                                       "LISTEN_MIN_INTERVAL_S": "0"})
+        status, _, _ = cls.server.request("PUT", "/api/listening", {"listening": True})
+        assert status == 200
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.stop()
+        cls.sink.http.shutdown()
+
+    def put(self, body):
+        status, text, _ = self.server.request("PUT", "/api/doc", body)
+        return status, text
+
+    def test_a_new_document_the_assistant_writes_is_not_reported_as_the_owners(self):
+        status, _ = self.put({"path": "goals.md", "content": "Assistant drafted this charter.\n",
+                              "author": "assistant"})
+        self.assertEqual(status, 200)
+        before = len(self.sink.received)
+        status, _ = self.put({"path": "goals.md",
+                              "content": "Assistant drafted this charter.\nThe owner added a line.\n"})
+        self.assertEqual(status, 200)
+        sent = "\n".join(self.sink.wait(before + 1)[before:])
+        self.assertIn("The owner added a line.", sent)
+        self.assertNotIn("+Assistant drafted", sent, "the assistant's own text came back as the owner's")
+
+    def test_an_unknown_author_is_refused(self):
+        status, _ = self.put({"path": "x.md", "content": "x", "author": "someone"})
+        self.assertEqual(status, 400)
+
+
 if __name__ == "__main__":
     unittest.main()

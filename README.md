@@ -44,8 +44,10 @@ optional and off unless configured.
 - **Who wrote what.** Text the assistant wrote is tinted in the editor, and
   active listening never reports the assistant's own edits back to it.
   Attribution comes from Yjs: every edit that is not a tab's is made by the
-  server session's own client. It lasts as long as the live session; after a
-  restart the document reloads untinted.
+  server session's own client. A whole-document save the assistant makes
+  (`PUT /api/doc` with `"author": "assistant"`, to create a document, say) is
+  also kept out of what listening reports. Tinting lasts as long as the live
+  session; after a restart the document reloads untinted.
 - **Chat pane.** A dockable, resizable chat with the assistant, alongside or under
   the document. It talks to a relay at `/relaychat/` (SSE + POST). The relay is a
   separate service and not part of this repository; without one, the pane stays

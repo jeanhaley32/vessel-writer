@@ -60,6 +60,9 @@ class SaveBody(BaseModel):
     collab: bool = False
     session: str | None = None
     external: bool = False
+    # "assistant" when the assistant writes the whole document (creating one,
+    # say), so listening does not report its words back to it as the owner's.
+    author: str | None = None
 
 
 class MoveBody(BaseModel):
@@ -123,7 +126,10 @@ async def get_doc(path: str, collab: bool = False):
 
 @app.put("/api/doc")
 async def put_doc(body: SaveBody):
+    if body.author not in (None, "assistant"):
+        raise HTTPException(400, "author must be \"assistant\" or absent")
     session = _ysessions.get(_norm(body.path))
+    before = _session_text(session) if session is not None else (vfs.read(body.path) or {}).get("content", "")
     content = body.content
     if session is not None:
         if body.collab and body.session == session["id"]:
@@ -135,7 +141,17 @@ async def put_doc(body: SaveBody):
             # session ended (server restart). Its copy can be stale, so it must
             # reload rather than write over the live document.
             raise HTTPException(409, "document has a live session; reload the editor")
-    return _store(body.path, content, body.title)
+    res = _store(body.path, content, body.title)
+    if body.author == "assistant":
+        after = _session_text(session) if session is not None else content
+        # A whole-document write has no anchors to replay, so only a baseline
+        # that still matches the text before the write can be moved past it.
+        # One that does not holds owner writing not yet reported; it is left
+        # alone, and the assistant sees its own words once rather than the
+        # owner's being swallowed.
+        registry.fire("on_assistant_edit", path=res["path"],
+                      rebase=lambda text: after if text == before else text)
+    return res
 
 
 def _store(path: str, content: str, title: str | None = None) -> dict:
