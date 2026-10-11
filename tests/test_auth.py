@@ -150,8 +150,12 @@ class AuthOnTest(unittest.TestCase):
         self.assertEqual(status, 200)
         link = "/" + json.loads(body)["path"]
         opener = with_cookies()
-        status, page, _ = self.server.request("GET", link, opener=opener)
-        self.assertEqual(status, 200)            # redirected into the app, now signed in
+        status, page, headers = self.server.request("GET", link, opener=opener)
+        self.assertEqual(status, 200)
+        self.assertIn('location.replace("./")', page)
+        self.assertIn("SameSite=strict", headers.get("set-cookie", ""))
+        status, page, _ = self.server.request("GET", "/", opener=opener)
+        self.assertEqual(status, 200)            # the page's own navigation, now signed in
         self.assertIn("static/app.js", page)
         status, page, _ = self.server.request("GET", link)
         self.assertEqual(status, 401)

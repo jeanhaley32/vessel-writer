@@ -26,7 +26,7 @@ import time
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel
 
 import siteconfig
@@ -159,8 +159,23 @@ def redeem(code: str, request: Request):
         return HTMLResponse(LOGIN_PAGE.replace("<!--note-->",
                             '<p class="note">That link has expired or was already used.</p>'),
                             status_code=401)
-    # Relative, so it lands on the app whatever prefix the proxy mounts it at.
-    return _set_session(RedirectResponse("./", status_code=303), request, tok)
+    # A page, not a redirect: a link opened from another app (a chat client)
+    # makes the whole redirect chain cross-site, and the browser then holds back
+    # the SameSite=Strict cookie it was just given, so the app answered 401 and
+    # the spent link said it had expired. A navigation this page starts is
+    # same-site, so the cookie goes with it. Relative, so it lands on the app
+    # whatever prefix the proxy mounts it at.
+    return _set_session(HTMLResponse(SIGNED_IN_PAGE), request, tok)
+
+
+SIGNED_IN_PAGE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="0; url=./">
+<title>vessel-writer</title></head>
+<body><p>Signed in. <a href="./">Open the writer</a>.</p>
+<script>location.replace("./")</script></body></html>
+"""
 
 
 LOGIN_PAGE = """<!doctype html>
