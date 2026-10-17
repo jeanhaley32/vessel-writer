@@ -83,14 +83,14 @@ func TestTheExpectedToolsAreAllRegistered(t *testing.T) {
 		"doc_read", "doc_list", "doc_edit",
 		"comment_post", "comment_list", "comment_resolve",
 		"listening_get", "listening_set",
-		"board_append", "board_undo", "board_read", "board_snapshot",
+		"board_append", "board_undo", "board_read", "board_snapshot", "board_list",
 	} {
 		if !got[want] {
 			t.Errorf("tool %q is not registered", want)
 		}
 	}
-	if len(got) != 12 {
-		t.Errorf("expected exactly 12 tools, got %d: %v", len(got), names)
+	if len(got) != 13 {
+		t.Errorf("expected exactly 13 tools, got %d: %v", len(got), names)
 	}
 }
 

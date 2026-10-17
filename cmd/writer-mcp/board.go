@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -31,14 +32,21 @@ type boardOp struct {
 	IDs   []string `json:"ids,omitempty" jsonschema:"emphasize: the nodes to circle (replaces earlier emphasis). zone: the nodes inside it"`
 }
 
+type boardArgs struct {
+	Path  string `json:"path" jsonschema:"the document whose board this is"`
+	Board string `json:"board,omitempty" jsonschema:"which of the document's boards; omit for main"`
+}
+
 type boardAppendArgs struct {
 	Path  string    `json:"path" jsonschema:"the document whose board to draw on"`
+	Board string    `json:"board,omitempty" jsonschema:"which of the document's boards, shown as tabs: 1-24 letters, digits, spaces, - or _; omit for main. A new name starts a new board"`
 	Ops   []boardOp `json:"ops" jsonschema:"drawing steps, applied as one batch, all or nothing; ids may refer to nodes earlier in the batch"`
 	Batch string    `json:"batch,omitempty" jsonschema:"optional short label for this batch, e.g. step 3: foothold"`
 }
 
 type boardAppendOut struct {
 	OK    bool   `json:"ok"`
+	Board string `json:"board"`
 	Batch string `json:"batch"`
 	Seqs  []int  `json:"seqs"`
 	Count int    `json:"count"`
@@ -47,16 +55,29 @@ type boardAppendOut struct {
 
 type boardUndoOut struct {
 	OK      bool   `json:"ok"`
+	Board   string `json:"board"`
 	Batch   string `json:"batch"`
 	Removed int    `json:"removed"`
 	Count   int    `json:"count"`
 }
 
 type boardReadOut struct {
-	Path  string           `json:"path"`
-	Ops   []map[string]any `json:"ops"`
-	Count int              `json:"count"`
-	Cap   int              `json:"cap"`
+	Path   string           `json:"path"`
+	Board  string           `json:"board"`
+	Exists bool             `json:"exists"`
+	Ops    []map[string]any `json:"ops"`
+	Count  int              `json:"count"`
+	Cap    int              `json:"cap"`
+}
+
+type boardListOut struct {
+	Path   string `json:"path"`
+	Cap    int    `json:"cap"`
+	Boards []struct {
+		Name   string `json:"name"`
+		Count  int    `json:"count"`
+		Exists bool   `json:"exists"`
+	} `json:"boards"`
 }
 
 type snapshotShot struct {
@@ -69,16 +90,50 @@ type snapshotShot struct {
 
 type boardSnapshotOut struct {
 	Path     string         `json:"path"`
+	Board    string         `json:"board"`
 	Problems int            `json:"problems"`
 	Shots    []snapshotShot `json:"shots"`
 }
 
 var boardOpKinds = map[string]bool{"node": true, "link": true, "note": true, "emphasize": true, "zone": true}
 
+var boardName = regexp.MustCompile(`^[A-Za-z0-9 _-]{1,24}$`)
+
+// cleanBoard folds runs of spaces as the writer does and refuses a name it
+// would refuse. "" means main, and is left out of the call.
+func cleanBoard(name string) (string, error) {
+	name = strings.Join(strings.Fields(name), " ")
+	if name == "" {
+		return "", nil
+	}
+	if !boardName.MatchString(name) {
+		return "", fmt.Errorf("a board name is 1 to 24 letters, digits, spaces, dashes or underscores; got %q", name)
+	}
+	return name, nil
+}
+
+// withBoard adds the board to a request only when one was named, so a call
+// that names none means main to the writer, as it always has.
+func withBoard(kv map[string]any, board string) map[string]any {
+	if board != "" {
+		kv["board"] = board
+	}
+	return kv
+}
+
+func boardTarget(in boardArgs) (string, string, error) {
+	path, err := cleanPath(in.Path)
+	if err != nil {
+		return "", "", err
+	}
+	board, err := cleanBoard(in.Board)
+	return path, board, err
+}
+
 // boardAppend refuses the obvious mistakes locally; everything else (sizes,
 // kinds, references to nodes already on the board) is the writer's to check.
 func boardAppend(ctx context.Context, c *Client, in boardAppendArgs) (*mcp.CallToolResult, boardAppendOut, error) {
-	path, err := cleanPath(in.Path)
+	path, board, err := boardTarget(boardArgs{in.Path, in.Board})
 	if err != nil {
 		return nil, boardAppendOut{}, err
 	}
@@ -98,12 +153,46 @@ func boardAppend(ctx context.Context, c *Client, in boardAppendArgs) (*mcp.CallT
 			return nil, boardAppendOut{}, fmt.Errorf("op %d: a note needs text", i+1)
 		}
 	}
-	body := map[string]any{"path": path, "ops": wireOps(in.Ops)}
+	body := withBoard(map[string]any{"path": path, "ops": wireOps(in.Ops)}, board)
 	if in.Batch != "" {
 		body["batch"] = in.Batch
 	}
 	var out boardAppendOut
 	err = c.do(ctx, "POST", "/api/board/append", body, &out)
+	return nil, out, err
+}
+
+func boardUndo(ctx context.Context, c *Client, in boardArgs) (*mcp.CallToolResult, boardUndoOut, error) {
+	path, board, err := boardTarget(in)
+	if err != nil {
+		return nil, boardUndoOut{}, err
+	}
+	var out boardUndoOut
+	err = c.do(ctx, "POST", "/api/board/undo", withBoard(map[string]any{"path": path}, board), &out)
+	return nil, out, err
+}
+
+func boardRead(ctx context.Context, c *Client, in boardArgs) (*mcp.CallToolResult, boardReadOut, error) {
+	path, board, err := boardTarget(in)
+	if err != nil {
+		return nil, boardReadOut{}, err
+	}
+	kv := map[string]string{"path": path}
+	if board != "" {
+		kv["board"] = board
+	}
+	var out boardReadOut
+	err = c.do(ctx, "GET", query("/api/board", kv), nil, &out)
+	return nil, out, err
+}
+
+func boardList(ctx context.Context, c *Client, in pathArgs) (*mcp.CallToolResult, boardListOut, error) {
+	path, err := cleanPath(in.Path)
+	if err != nil {
+		return nil, boardListOut{}, err
+	}
+	var out boardListOut
+	err = c.do(ctx, "GET", query("/api/board/list", map[string]string{"path": path}), nil, &out)
 	return nil, out, err
 }
 
@@ -167,10 +256,14 @@ type Snapshotter struct {
 	Timeout time.Duration
 }
 
-func (s *Snapshotter) run(ctx context.Context, path string) (boardSnapshotOut, error) {
+func (s *Snapshotter) run(ctx context.Context, path, board string) (boardSnapshotOut, error) {
 	ctx, cancel := context.WithTimeout(ctx, s.Timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, s.Python, s.Script, "--path", path, "--base", s.Base)
+	args := []string{s.Script, "--path", path, "--base", s.Base}
+	if board != "" {
+		args = append(args, "--board", board)
+	}
+	cmd := exec.CommandContext(ctx, s.Python, args...)
 	// the token goes in the environment, never in argv where ps would show it
 	cmd.Env = append(os.Environ(), "WRITER_TOKEN="+s.Token)
 	var stdout, stderr bytes.Buffer
@@ -203,49 +296,48 @@ func registerBoardTools(s *mcp.Server, c *Client, snap *Snapshotter, add func(*m
 			"the row). Kinds: node actor/service/state/boundary; link state/peer/attempt/failed (dashed); " +
 			"zone segment/trust/container draws a labelled boundary round its nodes. A link's step numbers " +
 			"a sequence (an attack chain reads 1, 2, 3). The batch is checked as a whole and refused, " +
-			"naming the op, if anything is wrong. After drawing, run board_snapshot and look at the images.",
+			"naming the op, if anything is wrong. A document can hold several boards, shown as tabs: " +
+			"board names one (omit it for main; a new name starts a new board, up to 12). After drawing, " +
+			"run board_snapshot on the same board and look at the images.",
 	}), func(ctx context.Context, _ *mcp.CallToolRequest, in boardAppendArgs) (*mcp.CallToolResult, boardAppendOut, error) {
 		return boardAppend(ctx, c, in)
 	})
 
 	mcp.AddTool(s, add(&mcp.Tool{
-		Name:        "board_undo",
-		Description: "Take the most recent batch off a document's board, and only that batch. There is no tool to clear a board; that is the owner's.",
-	}), func(ctx context.Context, _ *mcp.CallToolRequest, in pathArgs) (*mcp.CallToolResult, boardUndoOut, error) {
-		path, err := cleanPath(in.Path)
-		if err != nil {
-			return nil, boardUndoOut{}, err
-		}
-		var out boardUndoOut
-		err = c.do(ctx, "POST", "/api/board/undo", map[string]any{"path": path}, &out)
-		return nil, out, err
+		Name: "board_undo",
+		Description: "Take the most recent batch off one of a document's boards (main unless board names " +
+			"another), and only that batch. There is no tool to clear or delete a board; that is the owner's.",
+	}), func(ctx context.Context, _ *mcp.CallToolRequest, in boardArgs) (*mcp.CallToolResult, boardUndoOut, error) {
+		return boardUndo(ctx, c, in)
 	})
 
 	mcp.AddTool(s, add(&mcp.Tool{
 		Name:        "board_read",
-		Description: "Read a document's board as data: every op with its seq and batch, so the meaning can be checked.",
-	}), func(ctx context.Context, _ *mcp.CallToolRequest, in pathArgs) (*mcp.CallToolResult, boardReadOut, error) {
-		path, err := cleanPath(in.Path)
-		if err != nil {
-			return nil, boardReadOut{}, err
-		}
-		var out boardReadOut
-		err = c.do(ctx, "GET", query("/api/board", map[string]string{"path": path}), nil, &out)
-		return nil, out, err
+		Description: "Read one of a document's boards (main unless board names another) as data: every op with its seq and batch, so the meaning can be checked.",
+	}), func(ctx context.Context, _ *mcp.CallToolRequest, in boardArgs) (*mcp.CallToolResult, boardReadOut, error) {
+		return boardRead(ctx, c, in)
+	})
+
+	mcp.AddTool(s, add(&mcp.Tool{
+		Name: "board_list",
+		Description: "List a document's boards, the tabs in its board pane: each name with its op count and " +
+			"whether it exists yet. main is always listed first, drawn on or not.",
+	}), func(ctx context.Context, _ *mcp.CallToolRequest, in pathArgs) (*mcp.CallToolResult, boardListOut, error) {
+		return boardList(ctx, c, in)
 	})
 
 	mcp.AddTool(s, add(&mcp.Tool{
 		Name: "board_snapshot",
-		Description: "Render a document's board in a headless browser at 390 and 1280 wide, light and dark. " +
+		Description: "Render one of a document's boards (main unless board names another) in a headless browser at 390 and 1280 wide, light and dark. " +
 			"Returns the PNG paths (read them) and a geometry report per image: overlapping boxes, clipped " +
 			"text, links through boxes, labels on boxes, anything off the edge. problems counts them; fix " +
 			"anything above zero with board_undo and a better drawing.",
-	}), func(ctx context.Context, _ *mcp.CallToolRequest, in pathArgs) (*mcp.CallToolResult, boardSnapshotOut, error) {
-		path, err := cleanPath(in.Path)
+	}), func(ctx context.Context, _ *mcp.CallToolRequest, in boardArgs) (*mcp.CallToolResult, boardSnapshotOut, error) {
+		path, board, err := boardTarget(in)
 		if err != nil {
 			return nil, boardSnapshotOut{}, err
 		}
-		out, err := snap.run(ctx, path)
+		out, err := snap.run(ctx, path, board)
 		return nil, out, err
 	})
 }
