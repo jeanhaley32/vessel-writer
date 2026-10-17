@@ -12,6 +12,10 @@
 //   - text fits its box: boxes are sized from measured text, labels wrap;
 //   - arrows end on box edges and are routed through the gaps between rows.
 // window.__boardGeometry reports what was actually drawn, measured from the DOM.
+//
+// A document can hold several named boards, shown as tabs; "main" is the one
+// every caller that names none means. All of the open document's boards are
+// held here, so a live op lands on its own board whichever tab is showing.
 (() => {
   const SVGNS = "http://www.w3.org/2000/svg";
   const M = 14;                 // outer margin
@@ -24,7 +28,10 @@
 
   const RENDER_ONLY = typeof window.boardRenderPath === "string";
   let pane, canvas, measurer;
+  const MAIN = "main", BOARD_CAP = 12, NAME = /^[A-Za-z0-9 _-]{1,24}$/, TABS_KEY = "vw_board_tabs";
   let path = null, ops = [], seen = 0, open = false, es = null, ro = null;
+  // name -> { ops, exists, unseen }; exists is false for a tab made here and not yet drawn on
+  let boards = new Map([[MAIN, { ops: [], exists: false }]]), active = MAIN, loading = 0;
 
   function el(name, attrs, parent) {
     const n = document.createElementNS(SVGNS, name);
@@ -425,7 +432,7 @@
       }
     }
     seen = Math.max(seen, ...ops.map((o) => o.seq || 0), 0);
-    window.__boardGeometry = geometry(svg, m, lay);
+    window.__boardGeometry = { board: active, ...geometry(svg, m, lay) };
     if (pane) pane.classList.toggle("empty", !ops.length);
   }
 
@@ -519,45 +526,154 @@
   }
 
   // --- data ---
-  async function load(p) {
-    const res = await fetch("api/board?path=" + encodeURIComponent(p), { cache: "no-store" });
+  const q = (p, name) => "path=" + encodeURIComponent(p) + "&board=" + encodeURIComponent(name);
+  async function getJSON(url) {
+    const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) throw new Error("board " + res.status);
-    return (await res.json()).ops || [];
+    return res.json();
+  }
+  const load = async (p, name) => (await getJSON("api/board?" + q(p, name))).ops || [];
+
+  // the tab each document was left on; only boards other than main are written
+  function remembered(p) {
+    try { return JSON.parse(localStorage.getItem(TABS_KEY) || "{}")[p] || MAIN; } catch { return MAIN; }
+  }
+  function remember(p, name) {
+    try {
+      const all = JSON.parse(localStorage.getItem(TABS_KEY) || "{}");
+      if (name === MAIN) delete all[p]; else all[p] = name;
+      if (Object.keys(all).length) localStorage.setItem(TABS_KEY, JSON.stringify(all));
+      else localStorage.removeItem(TABS_KEY);
+    } catch { /* storage off: the tab is just not remembered */ }
   }
 
   async function switchTo(p) {
+    const gen = ++loading, same = p === path;
+    const want = same ? active : remembered(p);
+    const before = boards;
     path = p || null;
-    ops = []; seen = Infinity;      // a board opening is not new chalk: nothing fades in
-    if (path) {
-      try { ops = await load(path); } catch (e) { console.warn("board: could not load", e); ops = []; }
+    let next = new Map([[MAIN, { ops: [], exists: false }]]);
+    if (path && RENDER_ONLY) {
+      try { next = new Map([[want, { ops: await load(path, want), exists: true }]]); }
+      catch (e) { console.warn("board: could not load", e); }
+    } else if (path) {
+      try {
+        const list = (await getJSON("api/board/list?path=" + encodeURIComponent(path))).boards || [];
+        const loaded = await Promise.all(list.map(async (b) => [b.name, { ops: b.exists ? await load(path, b.name) : [], exists: b.exists }]));
+        next = new Map(loaded);
+        // a tab made here and not yet drawn on survives a reconnect
+        if (same) for (const [n, b] of before) if (!b.exists && !next.has(n) && next.size < BOARD_CAP) next.set(n, b);
+      } catch (e) { console.warn("board: could not load", e); }
     }
-    if (path !== p) return;
+    if (gen !== loading) return;
+    boards = next;
+    active = boards.has(want) ? want : RENDER_ONLY ? [...boards.keys()][0] : MAIN;
+    ops = boards.get(active).ops;
+    seen = Infinity;              // a board opening is not new chalk: nothing fades in
+    tabs();
     lit();
     if (open || RENDER_ONLY) draw();
     seen = Math.max(0, ...ops.map((o) => o.seq || 0));
   }
 
+  function select(name) {
+    if (!boards.has(name)) return;
+    active = name;
+    const b = boards.get(name);
+    b.unseen = false;
+    ops = b.ops;
+    seen = Infinity;
+    if (path) remember(path, name);
+    tabs();
+    if (open) draw();
+    seen = Math.max(0, ...ops.map((o) => o.seq || 0));
+  }
+
+  function tabs() {
+    const bar = pane && pane.querySelector(".board-tabs");
+    if (!bar) return;
+    bar.textContent = "";
+    for (const [name, b] of boards) {
+      const t = document.createElement("button");
+      t.type = "button";
+      t.className = "board-tab" + (name === active ? " active" : "") + (b.unseen ? " unseen" : "");
+      t.setAttribute("role", "tab");
+      t.setAttribute("aria-selected", String(name === active));
+      t.dataset.board = name;
+      t.textContent = name;
+      t.title = b.exists ? `${b.ops.length} ops` : "nothing drawn yet";
+      t.onclick = () => select(name);
+      bar.appendChild(t);
+    }
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "board-add";
+    add.title = "New board";
+    add.setAttribute("aria-label", "New board");
+    add.textContent = "+";
+    add.onclick = addBoard;
+    bar.appendChild(add);
+    const del = pane.querySelector(".board-delete");
+    if (del) del.hidden = active === MAIN || !boards.get(active).exists;
+  }
+
+  function addBoard() {
+    if (!path) return;
+    const asked = window.prompt("Name the new board (letters, digits, spaces, - and _; up to 24)");
+    if (asked === null) return;
+    const name = asked.split(/\s+/).filter(Boolean).join(" ");
+    if (!NAME.test(name)) { window.alert("A board name is 1 to 24 letters, digits, spaces, dashes or underscores."); return; }
+    const twin = [...boards.keys()].find((n) => n.toLowerCase() === name.toLowerCase());
+    if (twin) { select(twin); return; }
+    if (boards.size >= BOARD_CAP) { window.alert(`A document holds at most ${BOARD_CAP} boards.`); return; }
+    boards.set(name, { ops: [], exists: false });
+    select(name);
+  }
+
   function lit() {
     const btn = document.getElementById("board-btn");
-    if (btn) btn.classList.toggle("has-board", ops.length > 0);
+    if (btn) btn.classList.toggle("has-board", [...boards.values()].some((b) => b.ops.length > 0));
   }
 
   function onEvent(ev) {
     let e; try { e = JSON.parse(ev.data); } catch { return; }
-    if (e.type === "moved" && e.old === path) { path = e.path; return; }
+    if (e.type === "moved" && e.old === path) {
+      path = e.path;
+      if (active !== MAIN) { remember(e.old, MAIN); remember(path, active); }
+      return;
+    }
     if (e.path !== path) return;
-    if (e.type === "append") ops = ops.concat(e.ops.filter((o) => !ops.some((p) => p.seq === o.seq)));
-    else if (e.type === "undo") ops = ops.filter((o) => o.batch !== e.batch);
-    else if (e.type === "clear") ops = [];
+    const name = e.board || MAIN;
+    let b = boards.get(name);
+    if (e.type === "deleted") {
+      boards.delete(name);
+      if (!boards.has(MAIN)) boards.set(MAIN, { ops: [], exists: false });
+      if (active === name) { remember(path, MAIN); select(MAIN); } else tabs();
+      lit();
+      return;
+    }
+    if (!b) {
+      if (e.type !== "append") return;
+      b = { ops: [], exists: true };
+      boards.set(name, b);
+    }
+    if (e.type === "append") {
+      b.exists = true;
+      b.ops = b.ops.concat(e.ops.filter((o) => !b.ops.some((p) => p.seq === o.seq)));
+      if (name !== active) b.unseen = true;
+    } else if (e.type === "undo") b.ops = b.ops.filter((o) => o.batch !== e.batch);
+    else if (e.type === "clear") b.ops = [];
+    if (name === active) ops = b.ops;
+    tabs();
     lit();
-    if (open) draw();
+    if (open && name === active) draw();
   }
 
   function connect() {
     if (es) return;
     es = new EventSource("api/board/stream");
     es.onmessage = onEvent;
-    // EventSource retries by itself; on reopen the board is reloaded in case frames were missed
+    // EventSource retries by itself; on reopen the boards are reloaded in case frames were missed
     es.onopen = () => { if (path) switchTo(path); };
   }
   function disconnect() { if (es) { es.close(); es = null; } }
@@ -575,12 +691,19 @@
     } else disconnect();
   }
 
-  async function clearBoard() {
-    if (!path || !ops.length) return;
-    if (!window.confirm(`Clear the whole board for ${path}? This cannot be undone.`)) return;
-    const res = await fetch("api/board/clear", { method: "POST", headers: { "Content-Type": "application/json" },
-                                                  body: JSON.stringify({ path, confirm: true }) });
-    if (!res.ok) console.warn("board: clear refused", res.status);
+  async function ownerCall(what, confirmText) {
+    if (!path || !window.confirm(confirmText)) return;
+    const res = await fetch("api/board/" + what, { method: "POST", headers: { "Content-Type": "application/json" },
+                                                   body: JSON.stringify({ path, board: active, confirm: true }) });
+    if (!res.ok) console.warn("board: " + what + " refused", res.status);
+  }
+  function clearBoard() {
+    if (!ops.length) return;
+    ownerCall("clear", `Clear the board "${active}" of ${path}? This cannot be undone.`);
+  }
+  function deleteBoard() {
+    if (active === MAIN) return;
+    ownerCall("delete", `Delete the board "${active}" of ${path}, tab and all? This cannot be undone.`);
   }
 
   function mount() {
@@ -589,14 +712,19 @@
     canvas = pane.querySelector(".board-canvas");
     const clr = pane.querySelector(".board-clear");
     if (clr) clr.onclick = clearBoard;
+    const del = pane.querySelector(".board-delete");
+    if (del) del.onclick = deleteBoard;
     ro = new ResizeObserver(() => { if (open || RENDER_ONLY) draw(); });
     ro.observe(canvas);
     if (RENDER_ONLY) {
+      active = typeof window.boardRenderBoard === "string" ? window.boardRenderBoard : MAIN;
+      path = window.boardRenderPath;
       switchTo(window.boardRenderPath).then(() => {
         requestAnimationFrame(() => { draw(); window.__boardReady = true; });
       });
       return;
     }
+    tabs();
     const w = window.vesselWriter;
     if (w) {
       w.onDocOpened((p) => { if (p !== path) switchTo(p); });
@@ -607,5 +735,6 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mount);
   else mount();
 
-  window.vesselBoard = { setOpen, redraw: draw, path: () => path };
+  window.vesselBoard = { setOpen, redraw: draw, path: () => path, board: () => active, select,
+                         boards: () => [...boards].map(([name, b]) => ({ name, count: b.ops.length, exists: b.exists })) };
 })();

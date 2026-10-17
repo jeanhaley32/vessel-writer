@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="static/comments.css?v=brd1">
 <link rel="stylesheet" href="static/layout.css?v=brd1">
 <link rel="stylesheet" href="static/listening.css?v=brd1">
-<link rel="stylesheet" href="static/board.css?v=brd1">
+<link rel="stylesheet" href="static/board.css?v=brd2">
 </head>
 <body>
   <aside id="sidebar">
@@ -119,7 +119,7 @@
   </main>
 
   <section id="board-pane" hidden aria-label="board">
-    <div class="board-head"><span class="board-title">Board</span><button type="button" class="board-clear" title="Clear this document's board">Clear</button></div>
+    <div class="board-head"><div class="board-tabs" role="tablist" aria-label="boards"></div><button type="button" class="board-delete" title="Delete this board and its tab" hidden>Delete</button><button type="button" class="board-clear" title="Clear this board">Clear</button></div>
     <div class="board-canvas"></div>
   </section>
 
@@ -131,6 +131,6 @@
   <script src="static/panel.js?v=brd1"></script>
   <script src="static/rail.js?v=brd1"></script>
   <script src="static/listening.js?v=brd1"></script>
-  <script src="static/board.js?v=brd1"></script>
+  <script src="static/board.js?v=brd2"></script>
 </body>
 </html>

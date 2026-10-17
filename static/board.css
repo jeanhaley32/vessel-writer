@@ -13,10 +13,25 @@ body.mode-board #board-pane:not([hidden]) {
   border-bottom: 1px solid var(--hair); color: var(--ink-soft);
   font: .72rem/1.2 var(--ui-font); letter-spacing: .06em; text-transform: uppercase;
 }
-.board-head .board-title { flex: 1; }
-.board-clear { background: none; border: 1px solid var(--hair); border-radius: 4px; color: var(--ink-soft);
-  font: inherit; padding: .15rem .45rem; cursor: pointer; }
-.board-clear:hover { color: var(--accent); border-color: var(--accent); }
+.board-clear, .board-delete { background: none; border: 1px solid var(--hair); border-radius: 4px; color: var(--ink-soft);
+  font: inherit; padding: .15rem .45rem; cursor: pointer; flex: none; }
+.board-clear:hover, .board-delete:hover { color: var(--accent); border-color: var(--accent); }
+.board-delete[hidden] { display: none; }
+
+/* one tab per board; a long row scrolls rather than pushing Clear off the pane */
+.board-tabs { flex: 1; min-width: 0; display: flex; gap: .25rem; overflow-x: auto; scrollbar-width: thin; }
+.board-tab, .board-add {
+  background: none; border: 1px solid transparent; border-radius: 4px; color: var(--ink-soft); cursor: pointer;
+  font: .76rem/1.2 var(--ui-font); letter-spacing: 0; text-transform: none; white-space: nowrap;
+  padding: .15rem .5rem; flex: none; position: relative;
+}
+.board-tab:hover, .board-add:hover { color: var(--accent); }
+.board-tab.active { color: var(--ink); border-color: var(--hair); background: var(--paper); font-weight: 600; }
+.board-tab.unseen::after {      /* drawn on while another tab was showing */
+  content: ""; position: absolute; top: 2px; right: 2px; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--accent);
+}
+.board-add { font-weight: 600; padding: .15rem .45rem; }
 #board-pane.empty .board-clear { visibility: hidden; }
 .board-canvas { flex: 1 1 auto; min-height: 0; overflow: auto; position: relative; }
 #board-pane.empty .board-canvas::after {
