@@ -62,3 +62,4 @@ from . import resources  # noqa: E402,F401
 from . import comments  # noqa: E402,F401
 from . import listening  # noqa: E402,F401
 from . import uploads  # noqa: E402,F401
+from . import board  # noqa: E402,F401
