@@ -5,12 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>vessel-writer</title>
 <script>window.vesselConfig = /*{{config}}*/null;</script>
-<link rel="stylesheet" href="static/style.css?v=cmt2">
-<link rel="stylesheet" href="static/panel.css?v=cmt2">
-<link rel="stylesheet" href="static/rail.css?v=cmt2">
-<link rel="stylesheet" href="static/comments.css?v=cmt2">
-<link rel="stylesheet" href="static/layout.css?v=cmt2">
-<link rel="stylesheet" href="static/listening.css?v=cmt2">
+<link rel="stylesheet" href="static/style.css?v=brd1">
+<link rel="stylesheet" href="static/panel.css?v=brd1">
+<link rel="stylesheet" href="static/rail.css?v=brd1">
+<link rel="stylesheet" href="static/comments.css?v=brd1">
+<link rel="stylesheet" href="static/layout.css?v=brd1">
+<link rel="stylesheet" href="static/listening.css?v=brd1">
+<link rel="stylesheet" href="static/board.css?v=brd1">
 </head>
 <body>
   <aside id="sidebar">
@@ -52,6 +53,7 @@
       <button id="history-btn" title="Version history" aria-haspopup="true" aria-expanded="false">&#9719;</button>
       <div id="mode-switch" role="group" aria-label="Layout">
         <button class="mode-toggle" data-mode="writer" title="Write mode. Click for Chat mode">Write</button>
+        <button id="board-btn" class="board-toggle" type="button" title="Board mode: the document with its board beside it">Board</button>
       </div>
       <button id="comments-btn" type="button" hidden title="Comments on this document" aria-pressed="false">Comments <span class="count">0</span></button>
       <span id="listen-slot"></span>
@@ -116,13 +118,19 @@
     <article id="preview" class="rendered" hidden></article>
   </main>
 
+  <section id="board-pane" hidden aria-label="board">
+    <div class="board-head"><span class="board-title">Board</span><button type="button" class="board-clear" title="Clear this document's board">Clear</button></div>
+    <div class="board-canvas"></div>
+  </section>
+
   <div id="toast" class="toast" hidden></div>
 
   <script src="static/vendor/marked/marked.min.js"></script>
   <script src="static/vendor/mermaid/mermaid.min.js"></script>
-  <script type="module" src="static/app.js?v=cmt2"></script>
-  <script src="static/panel.js?v=cmt2"></script>
-  <script src="static/rail.js?v=cmt2"></script>
-  <script src="static/listening.js?v=cmt2"></script>
+  <script type="module" src="static/app.js?v=brd1"></script>
+  <script src="static/panel.js?v=brd1"></script>
+  <script src="static/rail.js?v=brd1"></script>
+  <script src="static/listening.js?v=brd1"></script>
+  <script src="static/board.js?v=brd1"></script>
 </body>
 </html>

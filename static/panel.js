@@ -51,7 +51,8 @@
     if (!HAS_RELAY) {
       document.body.append(ctx);
       wireContextMenu();
-      for (const id of ["#chat-btn", "#mode-switch", "#listen-slot"]) {
+      // the Write/Chat toggle goes with the chat; the Board button stays
+      for (const id of ["#chat-btn", "#mode-switch .mode-toggle", "#listen-slot"]) {
         const node = document.querySelector(id);
         if (node) node.hidden = true;
       }
@@ -182,7 +183,7 @@
   }
 
   async function attachFiles(files) {
-    const { imageFiles, uploadImage } = await import("./images.js?v=cmt2");
+    const { imageFiles, uploadImage } = await import("./images.js?v=brd1");
     for (const file of imageFiles(files)) {
       try { attached.push(await uploadImage(file)); renderAttached(); }
       catch (e) { appendMsg("rodin", "⚠️ " + e.message); }

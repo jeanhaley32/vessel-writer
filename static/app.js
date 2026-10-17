@@ -4,9 +4,9 @@ import {
   indentWithTab, markdown, syntaxHighlighting, defaultHighlightStyle, yCollab,
   Awareness, encodeAwarenessUpdate, applyAwarenessUpdate,
 } from "./vendor/editor/vessel-editor.bundle.mjs";
-import { commentExtensions, commentsAttach, commentsDetach } from "./comments.js?v=cmt2";
-import { imageExtensions } from "./images.js?v=cmt2";
-import { authorshipExtension } from "./authorship.js?v=cmt2";
+import { commentExtensions, commentsAttach, commentsDetach } from "./comments.js?v=brd1";
+import { imageExtensions } from "./images.js?v=brd1";
+import { authorshipExtension } from "./authorship.js?v=brd1";
 
 const $ = (s) => document.querySelector(s);
 const editor = $("#editor"), pathInput = $("#path"), statusEl = $("#status"), treeEl = $("#tree"), toastEl = $("#toast");
@@ -35,17 +35,21 @@ const expanded = new Set(JSON.parse(localStorage.getItem("vw_expanded") || "[]")
 // toggle shows which and switches to the other. Anything else stored (an old
 // "", junk) reads as writer.
 const MODE_KEY = "vw_mode";
-const MODES = { writer: "chat", chat: "writer" };   // each mode -> the one its toggle leads to
-const MODE_LABEL = { writer: "Write", chat: "Chat" };
+// Board mode is Write mode with the board beside the document: the chat
+// renders exactly as in Write mode, and the toggle leads back to Write.
+const MODES = { writer: "chat", chat: "writer", board: "writer" };   // each mode -> the one its toggle leads to
+const MODE_LABEL = { writer: "Write", chat: "Chat", board: "Board" };
 let mode = MODES[localStorage.getItem(MODE_KEY)] ? localStorage.getItem(MODE_KEY) : "writer";
 
 function applyMode() {
   for (const b of document.querySelectorAll(".mode-toggle")) {
     b.textContent = MODE_LABEL[mode];
     b.dataset.mode = mode;
-    b.title = `${mode === "writer" ? "Write" : "Chat"} mode. Click for ${MODES[mode] === "writer" ? "Write" : "Chat"} mode`;
+    b.title = `${MODE_LABEL[mode]} mode. Click for ${MODE_LABEL[MODES[mode]]} mode`;
   }
-  window.vesselChat?.setMode(mode);
+  document.body.classList.toggle("mode-board", mode === "board");
+  window.vesselChat?.setMode(mode === "board" ? "writer" : mode);
+  window.vesselBoard?.setOpen(mode === "board");
 }
 
 function setMode(next) {
@@ -58,6 +62,7 @@ const toggleMode = () => setMode(MODES[mode]);
 
 document.addEventListener("click", (e) => {
   if (e.target.closest(".mode-toggle")) toggleMode();
+  else if (e.target.closest("#board-btn")) setMode(mode === "board" ? "writer" : "board");
 });
 
 // panel.js mounts on DOMContentLoaded too, so defer the first apply until

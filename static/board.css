@@ -1,0 +1,112 @@
+/* Board mode. Loaded after layout.css: board mode is Write mode (mode-writer,
+   which panel.js already knows how to render the chat in) plus mode-board,
+   which only adds the board column. Nothing here applies without
+   body.mode-board, so every other mode renders exactly as before. */
+
+#board-pane { display: none; }
+body.mode-board #board-pane:not([hidden]) {
+  display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  background: var(--side); border-left: 1px solid var(--hair);
+}
+.board-head {
+  display: flex; align-items: center; gap: .5rem; padding: .45rem .8rem;
+  border-bottom: 1px solid var(--hair); color: var(--ink-soft);
+  font: .72rem/1.2 var(--ui-font); letter-spacing: .06em; text-transform: uppercase;
+}
+.board-head .board-title { flex: 1; }
+.board-clear { background: none; border: 1px solid var(--hair); border-radius: 4px; color: var(--ink-soft);
+  font: inherit; padding: .15rem .45rem; cursor: pointer; }
+.board-clear:hover { color: var(--accent); border-color: var(--accent); }
+#board-pane.empty .board-clear { visibility: hidden; }
+.board-canvas { flex: 1 1 auto; min-height: 0; overflow: auto; position: relative; }
+#board-pane.empty .board-canvas::after {
+  content: "Nothing on the board yet."; position: absolute; inset: 0; display: grid; place-items: center;
+  color: var(--ink-soft); font: .9rem var(--ui-font);
+}
+.board-svg { display: block; color: var(--ink-soft); }
+.board-measure { position: absolute; visibility: hidden; left: -9999px; top: 0; }
+
+/* the board button: lit when the open document has a board */
+#mode-switch .board-toggle {
+  background: none; border: 1px solid var(--hair); border-radius: 4px; color: var(--ink-soft);
+  font: inherit; font-size: .72rem; line-height: 1.2; letter-spacing: .03em; text-transform: uppercase;
+  padding: .18rem .5rem; min-height: 0; cursor: pointer; margin-left: .25rem; position: relative;
+}
+#mode-switch .board-toggle:hover { color: var(--accent); border-color: var(--accent); }
+#mode-switch .board-toggle.has-board::after {
+  content: ""; position: absolute; top: 2px; right: 2px; width: 5px; height: 5px; border-radius: 50%;
+  background: var(--accent);
+}
+body.mode-board #mode-switch .board-toggle { display: none; }   /* the mode toggle reads "Board" and leads back */
+
+/* --- marks --- */
+.bn-label { font: 600 13px/1 var(--ui-font); fill: var(--ink); }
+.bn-sub { font: 11px/1 var(--ui-font); fill: var(--ink-soft); }
+.bn-note { font: italic 12px/1 var(--ui-font); fill: var(--ink-soft); }
+.bn-llabel { font: 11px/1 var(--ui-font); fill: var(--ink-soft); }
+.bn-zlabel { font: 600 10.5px/1 var(--ui-font); fill: var(--ink-soft); letter-spacing: .06em; text-transform: uppercase; }
+.bn-step { font: 700 10px/1 var(--ui-font); fill: var(--paper); }
+
+.bn-box { fill: var(--paper); stroke: currentColor; stroke-width: 1.3; }
+.bnode.k-state .bn-box { stroke: var(--accent); stroke-width: 2; }
+.bnode.k-state .bn-label { fill: var(--accent); }
+.bnode.k-actor .bn-box { fill: color-mix(in srgb, var(--accent) 14%, var(--paper)); stroke: var(--accent); }
+.bnode.k-service .bn-box { fill: color-mix(in srgb, var(--ink) 5%, var(--paper)); }
+.bnode.k-boundary .bn-box { stroke-dasharray: 5 3; fill: var(--side); }
+.bn-mark { fill: none; stroke: var(--accent); stroke-width: 1.8; opacity: .9; }
+
+.bl-path { fill: none; stroke: currentColor; stroke-width: 1.4; }
+.bl-head { fill: currentColor; stroke: none; }
+.blink.k-state { color: var(--accent); }
+.blink.k-peer .bl-path { stroke-dasharray: 4 4; }
+.blink.k-attempt .bl-path { stroke-dasharray: 6 4; }
+.blink.k-failed { opacity: .75; }
+.blink.k-failed .bl-path { stroke-dasharray: 3 4; }
+.bl-cross { stroke: currentColor; stroke-width: 1.8; fill: none; }
+
+.bt-bg { fill: var(--side); opacity: .92; }
+.bt-step { fill: var(--accent); }
+.btag.k-failed .bt-step, .btag.k-attempt .bt-step { fill: var(--ink-soft); }
+
+.bz-rect { fill: color-mix(in srgb, var(--ink) 3%, transparent); stroke: currentColor; stroke-width: 1; stroke-dasharray: 6 4; }
+.bzone.z-trust .bz-rect { stroke: var(--accent); stroke-dasharray: 2 3; stroke-width: 1.4; }
+.bzone.z-container .bz-rect { stroke-dasharray: none; }
+
+.fresh { animation: board-chalk .5s ease both; }
+@keyframes board-chalk { from { opacity: 0; } to { opacity: 1; } }
+
+/* --- the mode: document | board, chat under both ---------------------------
+   Same grid as Write mode with one more column. */
+body.mode-board {
+  display: grid; height: 100vh;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, var(--board-w, 44%));
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+body.mode-board #sidebar { grid-column: 1; grid-row: 1 / span 2; }
+body.mode-board #main { grid-column: 2; grid-row: 1; height: auto; min-height: 0; }
+body.mode-board #board-pane:not([hidden]) { grid-column: 3; grid-row: 1; }
+body.mode-board #chat-panel:not([hidden]) { grid-column: 2 / span 2; grid-row: 2; }
+
+/* narrower: the board stacks under the document */
+@media (max-width: 900px) {
+  body.mode-board {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) auto;
+  }
+  body.mode-board #sidebar { grid-row: 1 / span 3; }
+  body.mode-board #board-pane:not([hidden]) { grid-column: 2; grid-row: 2; border-left: none; border-top: 1px solid var(--hair); }
+  body.mode-board #chat-panel:not([hidden]) { grid-column: 2; grid-row: 3; }
+}
+@media (max-width: 640px) {
+  body.mode-board { grid-template-columns: minmax(0, 1fr); }
+  body.mode-board #main, body.mode-board #board-pane:not([hidden]), body.mode-board #chat-panel:not([hidden]) { grid-column: 1; }
+}
+body.mode-board.writer-full #board-pane { display: none; }
+
+/* the render-only page the snapshot tool loads */
+body.board-render { display: block; height: auto; background: var(--paper); }
+body.board-render #board-pane { display: block; background: var(--paper); border: none; }
+body.board-render .board-canvas { overflow: visible; }
+body.mode-board.writer-full { grid-template-columns: auto minmax(0, 1fr); }
+/* text that a line may pass behind keeps a halo of the ground colour */
+.bn-note, .bn-llabel, .bn-zlabel { paint-order: stroke; stroke: var(--paper); stroke-width: 4px; stroke-linejoin: round; }
