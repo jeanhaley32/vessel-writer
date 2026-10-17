@@ -14,6 +14,11 @@ Undo removes the most recent batch, so a bad drawing comes off without wiping
 the board. Clear is the owner's: see clear() for what that does and does not
 guarantee.
 
+A document can hold several boards, each with a name, shown as tabs. "main" is
+the one every call means when it names none, so a caller that has never heard
+of names keeps working. Any other board comes into being with its first
+append; main always exists and can be cleared but not deleted.
+
 Persisted through statefile, off the writing path, like comments.
 """
 from __future__ import annotations
@@ -23,6 +28,7 @@ import html
 import json
 import logging
 import os
+import re
 import time
 import uuid
 from pathlib import Path
@@ -44,6 +50,9 @@ BATCH_LABEL_CAP = 60
 ID_CAP = 40
 RANK_MAX = 30
 STEP_MAX = 99
+BOARD_CAP = int(os.environ.get("BOARD_CAP", "12"))
+MAIN = "main"
+BOARD_NAME = re.compile(r"[A-Za-z0-9 _-]{1,24}")
 
 NODE_KINDS = ("actor", "service", "state", "boundary")
 # Friendlier spellings the assistant will reach for, folded onto the four kinds.
@@ -67,12 +76,49 @@ THEMES = ("light", "sepia", "dark", "night", "nord", "gruvbox", "forest", "rose"
 router = APIRouter()
 
 _STATE = "boards"
-_boards: dict[str, dict] = statefile.load(_STATE, {}).get("by_path", {})
+_VERSION = 2
 _subscribers: set[asyncio.Queue] = set()
 
 
+def _is_one_board(entry) -> bool:
+    # the version 1 shape: by_path[path] was the board itself. In version 2
+    # entry["ops"] can only be a board named "ops", which is a dict.
+    return isinstance(entry, dict) and isinstance(entry.get("ops"), list)
+
+
+def migrate(raw) -> tuple[dict[str, dict[str, dict]], bool]:
+    """by_path[path][name] -> board from either shape, and whether anything
+    moved. A version 1 board becomes that document's "main", as it was."""
+    raw = raw if isinstance(raw, dict) else {}
+    by_path = raw.get("by_path", {})
+    if raw.get("version") == _VERSION:
+        return by_path, False
+    out, moved = {}, False
+    for path, entry in by_path.items():
+        if _is_one_board(entry):
+            out[path], moved = {MAIN: entry}, True
+        elif isinstance(entry, dict):
+            out[path] = entry
+    return out, moved
+
+
 def _persist():
-    statefile.save(_STATE, {"by_path": _boards})
+    statefile.save(_STATE, {"version": _VERSION, "by_path": _boards})
+
+
+def _load() -> dict[str, dict[str, dict]]:
+    raw = statefile.load(_STATE, {})
+    by_path, moved = migrate(raw)
+    if moved:
+        # the old file is kept once, so going back to one-board code is a copy
+        if not (statefile.STATE_DIR / f"{_STATE}-v1.json").exists():
+            statefile.save(f"{_STATE}-v1", raw)
+        statefile.save(_STATE, {"version": _VERSION, "by_path": by_path})
+        log.info("boards: %d documents' boards are now named boards, each as %r", len(by_path), MAIN)
+    return by_path
+
+
+_boards = _load()
 
 
 def _publish(event: dict):
@@ -91,8 +137,50 @@ def _clean_path(value) -> str:
     return path
 
 
-def _board(path: str) -> dict:
-    return _boards.get(path) or {"ops": [], "next_seq": 1}
+def _clean_name(value) -> str:
+    if value is None or value == "":
+        return MAIN
+    name = " ".join(value.split()) if isinstance(value, str) else ""
+    if not BOARD_NAME.fullmatch(name):
+        raise HTTPException(400, "a board name is 1 to 24 letters, digits, spaces, dashes or "
+                                 f"underscores; got {value!r}")
+    return name
+
+
+def _names(path: str) -> list[str]:
+    """main first, then the others in the order they were made."""
+    stored = list(_boards.get(path, {}))
+    return [MAIN] + [n for n in stored if n != MAIN]
+
+
+def _board(path: str, name: str) -> dict:
+    return _boards.get(path, {}).get(name) or {"ops": [], "next_seq": 1}
+
+
+def _exists(path: str, name: str) -> bool:
+    return name in _boards.get(path, {})
+
+
+def _store(path: str, name: str, board: dict):
+    _boards.setdefault(path, {})[name] = board
+
+
+def _missing(path: str, name: str):
+    raise HTTPException(404, f"{path} has no board named {name!r}; its boards are "
+                             f"{', '.join(map(repr, _names(path)))}")
+
+
+def _may_create(path: str, name: str):
+    names = _names(path)
+    if name in names:
+        return
+    twin = next((n for n in names if n.casefold() == name.casefold()), None)
+    if twin:
+        raise HTTPException(400, f"nothing was drawn: {name!r} differs from the board {twin!r} "
+                                 f"only in case; use {twin!r}")
+    if len(names) >= BOARD_CAP:
+        raise HTTPException(429, f"nothing was drawn: {path} has {len(names)} boards and the cap "
+                                 f"is {BOARD_CAP}; draw on one of {', '.join(map(repr, names))}")
 
 
 class Refused(Exception):
@@ -163,7 +251,7 @@ def validate(existing: list[dict], ops) -> list[dict]:
         raise Refused("ops must be a non-empty list")
     if len(existing) + len(ops) > OP_CAP:
         raise Refused(f"this board holds {len(existing)} ops and the cap is {OP_CAP}; "
-                      f"{len(ops)} more will not fit. Undo or start a new document's board")
+                      f"{len(ops)} more will not fit. Undo, or draw on another board")
 
     nodes = {o["id"] for o in existing if o["op"] == "node"}
     zones = {o["id"] for o in existing if o["op"] == "zone"}
@@ -240,16 +328,24 @@ def validate(existing: list[dict], ops) -> list[dict]:
 
 
 @router.get("/api/board")
-async def get_board(path: str):
+async def get_board(path: str, board: str | None = None):
+    path, name = _clean_path(path), _clean_name(board)
+    found = _board(path, name)
+    return {"path": path, "board": name, "exists": _exists(path, name), "ops": found["ops"],
+            "count": len(found["ops"]), "cap": OP_CAP}
+
+
+@router.get("/api/board/list")
+async def list_boards(path: str):
     path = _clean_path(path)
-    board = _board(path)
-    return {"path": path, "ops": board["ops"], "count": len(board["ops"]), "cap": OP_CAP}
+    return {"path": path, "cap": BOARD_CAP, "boards": [
+        {"name": n, "count": len(_board(path, n)["ops"]), "exists": _exists(path, n)} for n in _names(path)]}
 
 
 @router.post("/api/board/append")
 async def append(body: dict):
-    path = _clean_path(body.get("path"))
-    board = _board(path)
+    path, name = _clean_path(body.get("path")), _clean_name(body.get("board"))
+    board = _board(path, name)
     label = body.get("batch")
     if label is not None and (not isinstance(label, str) or len(label) > BATCH_LABEL_CAP):
         raise HTTPException(400, f"batch, when given, is a label of at most {BATCH_LABEL_CAP} characters")
@@ -258,6 +354,7 @@ async def append(body: dict):
     except Refused as exc:
         status = 429 if "the cap is" in str(exc) else 400
         raise HTTPException(status, f"nothing was drawn: {exc}")
+    _may_create(path, name)
     batch = uuid.uuid4().hex[:12]
     at = time.time()
     first = board["next_seq"]
@@ -267,10 +364,10 @@ async def append(body: dict):
             op["batch_label"] = label
     board["ops"] = board["ops"] + ops
     board["next_seq"] = first + len(ops)
-    _boards[path] = board
+    _store(path, name, board)
     _persist()
-    _publish({"type": "append", "path": path, "batch": batch, "ops": ops})
-    return {"ok": True, "path": path, "batch": batch, "seqs": [op["seq"] for op in ops],
+    _publish({"type": "append", "path": path, "board": name, "batch": batch, "ops": ops})
+    return {"ok": True, "path": path, "board": name, "batch": batch, "seqs": [op["seq"] for op in ops],
             "count": len(board["ops"]), "cap": OP_CAP}
 
 
@@ -278,23 +375,25 @@ async def append(body: dict):
 async def undo(body: dict):
     """Take off the most recent batch, and only that one. Seq numbers are never
     reused, so a page that has seen a seq can always tell it is gone."""
-    path = _clean_path(body.get("path"))
-    board = _board(path)
+    path, name = _clean_path(body.get("path")), _clean_name(body.get("board"))
+    if name != MAIN and not _exists(path, name):
+        _missing(path, name)
+    board = _board(path, name)
     if not board["ops"]:
-        raise HTTPException(404, "the board is empty; nothing to undo")
+        raise HTTPException(404, f"the board {name!r} is empty; nothing to undo")
     batch = board["ops"][-1]["batch"]
     kept = [op for op in board["ops"] if op["batch"] != batch]
     removed = len(board["ops"]) - len(kept)
     board["ops"] = kept
-    _boards[path] = board
+    _store(path, name, board)
     _persist()
-    _publish({"type": "undo", "path": path, "batch": batch})
-    return {"ok": True, "path": path, "batch": batch, "removed": removed, "count": len(kept)}
+    _publish({"type": "undo", "path": path, "board": name, "batch": batch})
+    return {"ok": True, "path": path, "board": name, "batch": batch, "removed": removed, "count": len(kept)}
 
 
 @router.post("/api/board/clear")
 async def clear(body: dict, request: Request):
-    """Wipe a board. Only the owner's page calls this, and it is not an MCP tool.
+    """Wipe one board, leaving it in place, empty. Only the owner's page calls this, and it is not an MCP tool.
 
     What separates the owner from the assistant here is the channel, not a
     secret: the browser holds a session cookie and the assistant's tools send a
@@ -302,19 +401,42 @@ async def clear(body: dict, request: Request):
     token could mint the cookie, and with auth off there is neither. So this is
     a guard against accidents, not an access boundary: a bearer call is turned
     away, and every call must say {"confirm": true}."""
-    if request.headers.get("authorization", "").lower().startswith("bearer "):
-        raise HTTPException(403, "clearing a board is the owner's to do, from the board pane; "
-                                 "to take off your own drawing, use undo")
-    if body.get("confirm") is not True:
-        raise HTTPException(400, 'clearing a board needs {"confirm": true}')
-    path = _clean_path(body.get("path"))
-    board = _board(path)
+    path, name = _owners(body, request, "clearing")
+    if name != MAIN and not _exists(path, name):
+        _missing(path, name)
+    board = _board(path, name)
     removed = len(board["ops"])
     board["ops"] = []
-    _boards[path] = board
+    _store(path, name, board)
     _persist()
-    _publish({"type": "clear", "path": path})
-    return {"ok": True, "path": path, "removed": removed}
+    _publish({"type": "clear", "path": path, "board": name})
+    return {"ok": True, "path": path, "board": name, "removed": removed}
+
+
+@router.post("/api/board/delete")
+async def delete(body: dict, request: Request):
+    """Remove a board and its tab. The owner's, guarded as clear() is. main is
+    where every unnamed call lands, so it is only ever cleared."""
+    path, name = _owners(body, request, "deleting")
+    if name == MAIN:
+        raise HTTPException(400, f"the {MAIN!r} board cannot be deleted, only cleared")
+    if not _exists(path, name):
+        _missing(path, name)
+    removed = len(_boards[path].pop(name)["ops"])
+    if not _boards[path]:
+        del _boards[path]
+    _persist()
+    _publish({"type": "deleted", "path": path, "board": name})
+    return {"ok": True, "path": path, "board": name, "removed": removed}
+
+
+def _owners(body: dict, request: Request, doing: str) -> tuple[str, str]:
+    if request.headers.get("authorization", "").lower().startswith("bearer "):
+        raise HTTPException(403, f"{doing} a board is the owner's to do, from the board pane; "
+                                 "to take off your own drawing, use undo")
+    if body.get("confirm") is not True:
+        raise HTTPException(400, f'{doing} a board needs {{"confirm": true}}')
+    return _clean_path(body.get("path")), _clean_name(body.get("board"))
 
 
 @router.get("/api/board/stream")
@@ -340,17 +462,18 @@ async def stream(request: Request):
 
 
 @router.get("/board-render")
-async def render(path: str, theme: str = "light"):
-    """Just the board for one document, for the snapshot tool to load in a
+async def render(path: str, theme: str = "light", board: str | None = None):
+    """Just one board of one document, for the snapshot tool to load in a
     headless browser. Behind the same login as everything else: the auth
     middleware sees every route, this one included."""
-    path = _clean_path(path)
+    path, name = _clean_path(path), _clean_name(board)
     if theme not in THEMES:
         raise HTTPException(400, f"theme must be one of {', '.join(THEMES)}")
     page = (STATIC / "board-render.html").read_text()
     page = page.replace("{{theme}}", theme)
     page = page.replace("/*{{path}}*/null", json.dumps(path).replace("</", "<\\/"))
-    page = page.replace("{{title}}", html.escape(path))
+    page = page.replace("/*{{board}}*/null", json.dumps(name))
+    page = page.replace("{{title}}", html.escape(f"{path} · {name}"))
     return HTMLResponse(page)
 
 

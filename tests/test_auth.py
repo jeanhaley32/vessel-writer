@@ -35,9 +35,12 @@ def free_port():
 
 
 class Server:
-    def __init__(self, token=None, env_extra=None):
+    def __init__(self, token=None, env_extra=None, state=None):
         self.tmp = tempfile.mkdtemp()
         self.port = free_port()
+        for name, value in (state or {}).items():    # state files already there at start-up
+            Path(f"{self.tmp}/state").mkdir(parents=True, exist_ok=True)
+            Path(f"{self.tmp}/state/{name}.json").write_text(json.dumps(value))
         env = {k: v for k, v in os.environ.items() if not k.startswith(("INGEST_", "WRITER_"))}
         env.update(WRITER_ROOT=f"{self.tmp}/root", WRITER_STATE_DIR=f"{self.tmp}/state",
                    WRITER_TOKEN_FILE=f"{self.tmp}/no-token-file", WRITER_CLIENTLOG=f"{self.tmp}/client.log",
