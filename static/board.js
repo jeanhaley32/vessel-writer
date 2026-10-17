@@ -212,7 +212,7 @@
           flush();
           if (!doneNotes.has(r) && notesAt(r).length) {
             doneNotes.add(r);
-            y = placeNotes(r, y - GY + 10 + LINE - 4) + GY;
+            y = placeNotes(r, y - GY + 10 + (b.zone ? ZPAD : 0) + LINE - 4) + GY;
           }
         }
         if (b.zone) y += ZPAD;
@@ -499,6 +499,13 @@
     const tags = [...svg.querySelectorAll(".btag")].map((g) => bb(g.querySelector(".bt-bg")));
     const notes = [...svg.querySelectorAll(".bn-note")].map(bb);
     const labels = [...tags.map((b) => ({ b, what: "link tag" })), ...notes.map((b) => ({ b, what: "note" }))];
+    // a note on a zone's border reads as part of the zone
+    for (const g of zoneEls) {
+      const z = bb(g.querySelector(".bz-rect"));
+      const edges = [{ x: z.x, y: z.y - 1, w: z.w, h: 2 }, { x: z.x, y: z.y + z.h - 1, w: z.w, h: 2 },
+                     { x: z.x - 1, y: z.y, w: 2, h: z.h }, { x: z.x + z.w - 1, y: z.y, w: 2, h: z.h }];
+      for (const n of notes) if (edges.some((e) => hit(n, e, 0))) report.tagOverlaps.push({ what: "note/zone edge", box: "zone:" + g.dataset.id });
+    }
     for (let i = 0; i < labels.length; i++) {
       const L = labels[i];
       if (!inside(L.b, view)) report.outside.push({ what: L.what });
