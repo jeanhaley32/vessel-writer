@@ -144,7 +144,7 @@ func editDoc(ctx context.Context, c *Client, in editArgs) (*mcp.CallToolResult, 
 // the design's central boundary — that nothing here can replace a document
 // body — against what was really wired up, not against a second list that
 // could drift from it.
-func registerTools(s *mcp.Server, c *Client) []string {
+func registerTools(s *mcp.Server, c *Client, snap *Snapshotter) []string {
 	var registered []string
 	add := func(t *mcp.Tool) *mcp.Tool {
 		registered = append(registered, t.Name)
@@ -244,6 +244,8 @@ func registerTools(s *mcp.Server, c *Client) []string {
 		err := c.do(ctx, "PUT", "/api/listening", map[string]any{"listening": in.Listening}, &out)
 		return nil, out, err
 	})
+
+	registerBoardTools(s, c, snap, add)
 
 	return registered
 }

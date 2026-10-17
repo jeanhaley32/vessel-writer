@@ -67,6 +67,14 @@ optional and off unless configured.
   slash commands and answer its permission prompts. Unlike the rail, it shows
   everything a command prints, so it exists only while open. Example ttyd
   invocation: `ttyd -i lo -p 8793 -W -O -b /writer/term tmux attach -t relay`.
+- **Board mode.** A third layout mode: the document, a live blackboard beside
+  it, and the chat under both. The assistant draws through `POST
+  /api/board/append` (nodes placed by rank and order, links with optional
+  step numbers, notes, emphasis, zones), every batch checked and refused
+  whole if any op is wrong; `undo` takes off the latest batch; `clear` is the
+  owner's (`{"confirm": true}`, bearer calls refused). `GET /board-render`
+  shows just the board, for `tools/board_snapshot.py`, which renders it
+  headless and reports overlaps, clipping and arrows through boxes.
 - **writer-mcp.** A stdio MCP server, so an agent can read documents and work
   with comments through tools instead of hand-written HTTP calls. See below.
 
@@ -178,8 +186,13 @@ to the writer. Build it with `go build -o bin/writer-mcp ./cmd/writer-mcp` and
 register it with your MCP client. Pass `-base` for the writer's URL and
 `-token-file` (or `WRITER_TOKEN`) when auth is on.
 
-It has eight tools: `doc_read`, `doc_list`, `doc_edit`, `comment_post`,
-`comment_list`, `comment_resolve`, `listening_get`, `listening_set`.
+It has twelve tools: `doc_read`, `doc_list`, `doc_edit`, `comment_post`,
+`comment_list`, `comment_resolve`, `listening_get`, `listening_set`, and the
+board tools `board_append`, `board_undo`, `board_read`, `board_snapshot`.
+`board_snapshot` runs `tools/board_snapshot.py` (`-python`, `-snapshot` flags),
+which needs node, `playwright-core` (`BOARD_PLAYWRIGHT_DIR`) and a Chromium
+(`BOARD_CHROMIUM`, else the Playwright cache). There is no tool to clear a
+board: clearing is the owner's, from the board pane.
 
 **There is deliberately no `doc_write`.** Documents are the owner's prose. The
 assistant writes into a draft through comments and through `doc_edit`, whose

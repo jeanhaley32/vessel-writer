@@ -34,9 +34,14 @@ func main() {
 	base := flag.String("base", "http://127.0.0.1:8791", "base URL of the vessel-writer")
 	tokenFile := flag.String("token-file", "~/vessel-writer/state/token",
 		"file holding the writer's token, when its auth is on (WRITER_TOKEN overrides)")
+	python := flag.String("python", "~/vessel-writer/.venv/bin/python", "python that runs the board snapshot tool")
+	snapshot := flag.String("snapshot", "~/vessel-writer/tools/board_snapshot.py", "the board snapshot tool")
 	flag.Parse()
 
-	c := &Client{base: *base, token: loadToken(*tokenFile), httpc: &http.Client{Timeout: 15 * time.Second}}
+	tok := loadToken(*tokenFile)
+	c := &Client{base: *base, token: tok, httpc: &http.Client{Timeout: 15 * time.Second}}
+	snap := &Snapshotter{Python: expandHome(*python), Script: expandHome(*snapshot), Base: *base, Token: tok,
+		Timeout: 150 * time.Second}
 
 	srv := mcp.NewServer(&mcp.Implementation{
 		Name:    "writer",
@@ -44,7 +49,7 @@ func main() {
 		Version: "0.1.0",
 	}, nil)
 
-	registerTools(srv, c)
+	registerTools(srv, c, snap)
 
 	// stdout is the MCP transport; a stray log line there corrupts the protocol.
 	log.SetOutput(os.Stderr)
@@ -64,16 +69,18 @@ func loadToken(path string) string {
 	if t := strings.TrimSpace(os.Getenv("WRITER_TOKEN")); t != "" {
 		return t
 	}
-	if rest, ok := strings.CutPrefix(path, "~/"); ok {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return ""
-		}
-		path = filepath.Join(home, rest)
-	}
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(expandHome(path))
 	if err != nil {
 		return ""
 	}
 	return strings.TrimSpace(string(raw))
+}
+
+func expandHome(path string) string {
+	if rest, ok := strings.CutPrefix(path, "~/"); ok {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, rest)
+		}
+	}
+	return path
 }
