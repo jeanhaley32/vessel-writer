@@ -75,6 +75,17 @@ optional and off unless configured.
   owner's (`{"confirm": true}`, bearer calls refused). `GET /board-render`
   shows just the board, for `tools/board_snapshot.py`, which renders it
   headless and reports overlaps, clipping and arrows through boxes.
+  A document can hold up to 12 named boards, shown as tabs across the top of
+  the pane. Every board call takes an optional `board` (1-24 letters, digits,
+  spaces, `-` or `_`); one that names none means `main`. A board is made by
+  its first append, `GET /api/board/list?path=` lists a document's boards
+  with their op counts, and `POST /api/board/delete` removes one, guarded as
+  `clear` is; `main` can be cleared but not deleted. "+" in the pane opens a
+  new tab, Clear clears the tab showing, and each document's last tab is
+  remembered in the browser. A state file from before named boards loads
+  with each document's board as its `main` and is kept as `boards-v1.json`.
+  `tools/board_tabs_check.mjs` checks the tabs headless against a scratch
+  writer.
 - **writer-mcp.** A stdio MCP server, so an agent can read documents and work
   with comments through tools instead of hand-written HTTP calls. See below.
 
@@ -186,13 +197,15 @@ to the writer. Build it with `go build -o bin/writer-mcp ./cmd/writer-mcp` and
 register it with your MCP client. Pass `-base` for the writer's URL and
 `-token-file` (or `WRITER_TOKEN`) when auth is on.
 
-It has twelve tools: `doc_read`, `doc_list`, `doc_edit`, `comment_post`,
+It has thirteen tools: `doc_read`, `doc_list`, `doc_edit`, `comment_post`,
 `comment_list`, `comment_resolve`, `listening_get`, `listening_set`, and the
-board tools `board_append`, `board_undo`, `board_read`, `board_snapshot`.
-`board_snapshot` runs `tools/board_snapshot.py` (`-python`, `-snapshot` flags),
-which needs node, `playwright-core` (`BOARD_PLAYWRIGHT_DIR`) and a Chromium
-(`BOARD_CHROMIUM`, else the Playwright cache). There is no tool to clear a
-board: clearing is the owner's, from the board pane.
+board tools `board_append`, `board_undo`, `board_read`, `board_snapshot`,
+`board_list`. The first four board tools take an optional `board`, `main`
+when omitted. `board_snapshot` runs `tools/board_snapshot.py` (`-python`,
+`-snapshot` flags; `--board` on the script), which needs node,
+`playwright-core` (`BOARD_PLAYWRIGHT_DIR`) and a Chromium (`BOARD_CHROMIUM`,
+else the Playwright cache). There is no tool to clear or delete a board:
+that is the owner's, from the board pane.
 
 **There is deliberately no `doc_write`.** Documents are the owner's prose. The
 assistant writes into a draft through comments and through `doc_edit`, whose
