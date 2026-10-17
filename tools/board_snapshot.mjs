@@ -21,12 +21,13 @@ try {
         return route.continue({ headers: { ...req.headers(), authorization: "Bearer " + job.token } });
       return route.continue();
     });
-    const url = `${job.base}/board-render?path=${encodeURIComponent(job.path)}&theme=${shot.theme}`;
+    const url = `${job.base}/board-render?path=${encodeURIComponent(job.path)}&board=${encodeURIComponent(job.board || "main")}&theme=${shot.theme}`;
     const res = await page.goto(url);
     if (!res || !res.ok()) throw new Error(`board-render answered ${res ? res.status() : "nothing"}`);
     await page.waitForFunction(() => window.__boardReady === true, null, { timeout: 15000 });
     await page.waitForTimeout(600);   // let the chalk fade-in finish
     const geometry = await page.evaluate(() => window.__boardGeometry);
+    if (geometry && geometry.board !== (job.board || "main")) throw new Error(`drew board ${geometry.board}, not ${job.board}`);
     await page.screenshot({ path: shot.png, fullPage: true });
     shots.push({ width: shot.width, theme: shot.theme, png: shot.png, consoleErrors: errors, geometry });
     await ctx.close();

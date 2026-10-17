@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Render a document's board in a headless browser and report its geometry.
 
-    WRITER_TOKEN_FILE=... python3 tools/board_snapshot.py --path learn/x.md [--base URL] [--out DIR]
+    WRITER_TOKEN_FILE=... python3 tools/board_snapshot.py --path learn/x.md [--board NAME] [--base URL] [--out DIR]
 
-Loads /board-render at a phone width and a desktop width, in a light and a
+Loads /board-render for one board (main unless --board names another) at a phone width and a desktop width, in a light and a
 dark theme, writes a PNG of each and prints one JSON object: the PNG paths
 and, for each, the geometry the page measured (overlapping boxes, clipped
 text, arrows through boxes, anything off the edge). Exits 1 when any shot has
@@ -68,6 +68,7 @@ def problems(geometry: dict) -> int:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--path", required=True, help="document whose board to render")
+    ap.add_argument("--board", default="main", help="which of the document's boards (default main)")
     ap.add_argument("--base", default=os.environ.get("WRITER_BASE", "http://127.0.0.1:8791"))
     ap.add_argument("--out", help="directory for the PNGs (default: a new temp dir)")
     ap.add_argument("--widths", default=",".join(map(str, WIDTHS)))
@@ -77,10 +78,12 @@ def main(argv=None) -> int:
     out = Path(args.out) if args.out else Path(tempfile.mkdtemp(prefix="board-snapshot-"))
     out.mkdir(parents=True, exist_ok=True)
     stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", args.path).strip("_") or "board"
+    if args.board != "main":
+        stem += "--" + re.sub(r"[^A-Za-z0-9_-]+", "_", args.board)
     stamp = time.strftime("%Y%m%d-%H%M%S")
     shots = [{"width": int(w), "theme": t, "png": str(out / f"{stem}-{w}-{t}-{stamp}.png")}
              for w in args.widths.split(",") for t in args.themes.split(",")]
-    job = {"base": args.base.rstrip("/"), "path": args.path, "token": token(), "shots": shots,
+    job = {"base": args.base.rstrip("/"), "path": args.path, "board": args.board, "token": token(), "shots": shots,
            "chromium": find_chromium(),
            "playwrightDir": os.environ.get("BOARD_PLAYWRIGHT_DIR", str(DEFAULT_PLAYWRIGHT))}
     proc = subprocess.run(["node", str(HERE / "board_snapshot.mjs")], input=json.dumps(job),
@@ -90,6 +93,7 @@ def main(argv=None) -> int:
         return 2
     result = json.loads(proc.stdout.strip().splitlines()[-1])
     result["path"] = args.path
+    result["board"] = args.board
     result["problems"] = sum(problems(s["geometry"]) + len(s["consoleErrors"]) for s in result["shots"])
     print(json.dumps(result))
     return 1 if result["problems"] else 0
